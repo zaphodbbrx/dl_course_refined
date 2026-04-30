@@ -1,0 +1,118 @@
+\documentclass[a4paper,12pt]{article}
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{hyperref}
+\usepackage{geometry}
+\geometry{top=2cm, bottom=2cm, left=2.5cm, right=2.5cm}
+
+\title{Конспект лекции 4: \\ Рекуррентные нейронные сети}
+\author{Липкин С.М.}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{RNN: базовые понятия}
+
+Рекуррентные нейронные сети (RNN) — класс сетей для обработки последовательных данных (тексты, речь, временные ряды, видео, ДНК). Ключевые особенности: внутренняя память $h_t$, разделяемые веса, обработка произвольной длины.
+
+\subsection{Математика Vanilla RNN}
+Скрытое состояние:
+\[
+h_t = \tanh(W_{xh} x_t + W_{hh} h_{t-1} + b_h)
+\]
+Выход:
+\[
+y_t = W_{hy} h_t + b_y
+\]
+Параметры $W, b$ разделяются на всех временных шагах.
+
+\section{Обучение: BPTT}
+
+Backpropagation Through Time:
+\begin{enumerate}
+    \item Forward pass — обработка шаг за шагом.
+    \item Loss $L = \sum_{t=1}^{T} L_t$.
+    \item Backward — обратное распространение от $T$ к $1$.
+    \item Update — обновление весов по сумме градиентов.
+\end{enumerate}
+Для длинных последовательностей используется Truncated BPTT (window $k \approx 20$--50).
+
+\section{Проблемы градиентов}
+
+\subsection{Исчезающий градиент}
+\[
+\frac{\partial h_t}{\partial h_j} = \prod_{k=j+1}^{t} W_{hh}^{T} \cdot \operatorname{diag}(f'(z_k))
+\]
+Если $\max |\lambda(W_{hh})| < 1$, произведение $\to 0$ — веса не обновляются, модель забывает контекст.
+
+\subsection{Взрывающийся градиент}
+Если $\max |\lambda(W_{hh})| > 1$, градиент экспоненциально растёт $\to$ NaN, нестабильность.
+Решение: \textbf{Gradient Clipping}:
+\[
+g = \text{threshold} \cdot \frac{g}{\|g\|}, \quad \text{threshold} \in [1, 5]
+\]
+
+\section{LSTM (Long Short-Term Memory)}
+
+LSTM решает проблему градиентов через аддитивное обновление cell state $C_t$.
+
+\subsection{Вентили}
+\begin{align*}
+f_t &= \sigma(W_f [h_{t-1}, x_t] + b_f) \quad \text{(forget gate)} \\
+i_t &= \sigma(W_i [h_{t-1}, x_t] + b_i) \quad \text{(input gate)} \\
+\tilde{C}_t &= \tanh(W_C [h_{t-1}, x_t] + b_C) \\
+o_t &= \sigma(W_o [h_{t-1}, x_t] + b_o) \quad \text{(output gate)}
+\end{align*}
+
+\subsection{Обновление состояния}
+\[
+C_t = f_t \odot C_{t-1} + i_t \odot \tilde{C}_t, \qquad
+h_t = o_t \odot \tanh(C_t)
+\]
+Градиент протекает через $C_t$ — исчезающий градиент не возникает.
+
+\section{GRU (Gated Recurrent Unit)}
+
+Упрощение LSTM: два вентиля (update $z_t$, reset $r_t$), единое состояние $h_t$. Меньше параметров, быстрее обучение, меньше переобучение. На небольших датасетах часто не уступает LSTM.
+
+\section{Архитектуры seq2seq}
+
+\begin{itemize}
+    \item \textbf{Many-to-One}: классификация последовательности (sentiment analysis).
+    \item \textbf{One-to-Many}: генерация (image captioning).
+    \item \textbf{Many-to-Many}: машинный перевод, распознавание речи.
+    \item \textbf{Encoder-Decoder}: энкодер сжимает вход в контекстный вектор, декодер генерирует выход.
+\end{itemize}
+
+\section{Продвинутые архитектуры}
+
+\subsection{Bidirectional RNN}
+Два RNN (forward + backward), конкатенация состояний.
+
+\subsection{Deep RNN}
+Несколько слоёв RNN для иерархии признаков.
+
+\subsection{Attention}
+Взвешивание важности частей последовательности:
+\[
+\alpha_i = \text{softmax}(e_i), \quad \text{context} = \sum \alpha_i h_i
+\]
+Attention $\to$ Transformers.
+
+\section{Ограничения RNN и современные тенденции}
+
+Ограничения:
+\begin{enumerate}
+    \item Последовательная обработка — нет параллелизма, медленно.
+    \item Потеря долгосрочного контекста (даже с LSTM/GRU).
+\end{enumerate}
+Тенденции:
+\begin{itemize}
+    \item \textbf{Transformers}: полный параллелизм, self-attention (BERT, GPT).
+    \item RNN остаются полезны для stream/edge/real-time задач.
+\end{itemize}
+
+\end{document}

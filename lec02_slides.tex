@@ -1,0 +1,1014 @@
+\documentclass[aspectratio=169, 9pt]{beamer}
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{amsmath,amssymb,bm}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usepackage{booktabs}
+\usepackage{array}
+\usetikzlibrary{arrows.meta, positioning, shapes, calc, fit, matrix, backgrounds}
+
+\usetheme{Ilmenau}
+\usecolortheme{default}
+\setbeamercolor{background canvas}{bg=white}
+\setbeamercolor{normal text}{fg=black}
+\setbeamercolor{frametitle}{fg=blue!80!black, bg=blue!5}
+\setbeamercolor{title}{fg=white}
+\setbeamercolor{item}{fg=blue!70}
+\setbeamerfont{title}{size=\large, series=\bfseries}
+\setbeamerfont{subtitle}{size=\normalsize}
+\setbeamercolor{block title}{fg=white, bg=blue!60}
+\setbeamercolor{block body}{bg=blue!5}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}{
+  \leavevmode
+  \hbox{
+    \begin{beamercolorbox}[wd=.5\paperwidth,ht=2ex,dp=1ex,left]{author in head/foot}
+      \hspace*{1em}\insertshortauthor
+    \end{beamercolorbox}
+    \begin{beamercolorbox}[wd=.5\paperwidth,ht=2ex,dp=1ex,right]{date in head/foot}
+      \insertframenumber{} / \inserttotalframenumber\hspace*{1em}
+    \end{beamercolorbox}}
+  \vskip0pt
+}
+
+\title{Свёрточные нейронные сети}
+\subtitle{От свёрточной арифметики до знаковых архитектур}
+\author{Курс «Deep Learning»}
+\date{2026}
+
+\tikzset{
+  pixel/.style={draw, minimum size=6mm, inner sep=1pt, font=\tiny},
+  rpixel/.style={pixel, fill=red!20},
+  bpixel/.style={pixel, fill=blue!20},
+  gpixel/.style={pixel, fill=green!20},
+  kernel/.style={draw, minimum size=6mm, inner sep=1pt, font=\tiny, fill=orange!20},
+  arrow/.style={-{Stealth[scale=1.2]}, thick}
+}
+
+\begin{document}
+
+% === Slide 1: Title ===
+\begin{frame}
+  \titlepage
+\end{frame}
+
+% === Slide 2: Plan ===
+\begin{frame}{План лекции}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \begin{itemize}
+        \item Мотивация: что не так с полносвязными слоями?
+        \item Что такое свёртка?
+        \item Свёрточная арифметика
+        \item Базовые блоки CNN
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \begin{itemize}
+        \item Pooling и его виды
+        \item Специализированные свёртки
+        \item Знаковые архитектуры:
+        \begin{itemize}
+          \item LeNet, AlexNet, VGG
+          \item Inception, ResNet
+          \item DenseNet, MobileNet, EfficientNet
+        \end{itemize}
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === Slide 3: Motivation ===
+\begin{frame}{Мотивация: полносвязные слои неэффективны}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{Проблемы FC-слоёв для изображений:}
+      \begin{itemize}
+        \item $224\times224\times3$ \textit{цветное изображение} $\to$ 150\,528 нейронов во входном слое
+        \item Скрытый слой 1024 нейрона: \textbf{150 млн параметров} только на первом слое
+        \item Нет инвариантности к сдвигу
+        \item Нет локальности: каждый пиксель влияет на каждый нейрон
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \begin{block}{Идея CNN}
+        \textbf{Локальность}: нейрон «видит» только небольшой участок изображения (receptive field).
+        
+        \textbf{Разделение весов}: один и тот же фильтр применяется ко всем участкам изображения.
+        
+        \begin{itemize}
+          \item В 10--100 раз меньше параметров
+          \item Инвариантность к сдвигу
+          \item Естественная иерархия признаков
+        \end{itemize}
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === Slide 4: What is convolution ===
+\begin{frame}{Что такое свёртка?}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{1D свёртка (дискретная):}
+      \[
+      (f * g)[n] = \sum_{m=-\infty}^{\infty} f[m] \cdot g[n-m]
+      \]
+      
+      \textbf{2D свёртка (кросс-корреляция, на практике):}
+      \[
+      S[i,j] = \sum_{u=-U}^{U} \sum_{v=-V}^{V} I[i+u, j+v] \cdot K[u+U, v+V]
+      \]
+      
+      \textbf{Компоненты:}
+      \begin{itemize}
+        \item $I$ — вход (изображение, feature map)
+        \item $K$ — ядро (kernel, filter), размер $K_h \times K_w$
+        \item $S$ — выход (feature map)
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \centering
+      \begin{tikzpicture}[scale=0.6]
+        % Input grid 4x4
+        \draw[step=1cm, black!30, very thin] (0,0) grid (4,4);
+        \foreach \x in {0.5,1.5,2.5,3.5}
+          \foreach \y in {0.5,1.5,2.5,3.5}
+            \fill[blue!10] (\x,\y) circle (0.2cm);
+        
+        % Highlight the 3x3 receptive field
+        \draw[red, thick] (0,0) rectangle (3,3);
+        \node[red, font=\tiny] at (1.5, -0.3) {receptive field};
+        
+        % Kernel
+        \draw[step=1cm, orange!60, very thick] (5,1) grid (8,4);
+        \foreach \x in {5.5,6.5,7.5}
+          \foreach \y in {1.5,2.5,3.5}
+            \fill[orange!20] (\x,\y) circle (0.2cm);
+        \node[font=\small] at (6.5, 0.7) {kernel $3\times3$};
+        
+        % Arrow
+        \draw[->, thick] (4,2) -- (5,2);
+        
+        % Output pixel
+        \fill[red!40] (9,2) circle (0.4cm);
+        \node[font=\tiny] at (9,1.3) {1 выходной};
+        \node[font=\tiny] at (9,0.7) {пиксель};
+        
+        % Formula
+        \draw (6.5, 0) node[below, font=\tiny] {$S = I * K$};
+      \end{tikzpicture}
+      
+      \vspace{0.3em}
+      Ядро «скользит» по изображению: скалярное произведение в каждом окне.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === Slide 5: Convolution arithmetic - stride, padding ===
+\begin{frame}{Свёрточная арифметика}
+  \begin{block}{Основная формула}
+    \[
+    O = \left\lfloor \frac{I + 2P - K}{S} \right\rfloor + 1
+    \]
+    где $I$ — размер входа, $K$ — размер ядра, $P$ — padding, $S$ — stride, $O$ — размер выхода.
+  \end{block}
+  
+  \begin{columns}[T]
+    \begin{column}{0.33\textwidth}
+      \textbf{Padding = 0, Stride = 1}
+      \begin{center}
+        \begin{tikzpicture}[scale=0.35]
+          \draw[step=1cm, black!20, thin] (0,0) grid (5,5);
+          \draw[red, thick] (0,0) rectangle (3,3);
+          \node[font=\tiny] at (1.5, -0.5) {$5\times5 \to 3\times3$};
+        \end{tikzpicture}
+      \end{center}
+    \end{column}
+    \begin{column}{0.33\textwidth}
+      \textbf{Padding = 1, Stride = 1}
+      \begin{center}
+        \begin{tikzpicture}[scale=0.35]
+          \draw[step=1cm, black!20, thin] (-1,-1) grid (6,6);
+          \draw[blue, thick] (0,0) rectangle (5,5);
+          \draw[red, thick] (-1,-1) rectangle (2,2);
+          \node[font=\tiny] at (2, -1.2) {$5\times5 \to 5\times5$};
+          \node[font=\tiny, blue] at (2.5, -0.8) {image};
+        \end{tikzpicture}
+      \end{center}
+    \end{column}
+    \begin{column}{0.33\textwidth}
+      \textbf{Padding = 0, Stride = 2}
+      \begin{center}
+        \begin{tikzpicture}[scale=0.35]
+          \draw[step=1cm, black!20, thin] (0,0) grid (5,5);
+          \draw[red, thick] (0,0) rectangle (3,3);
+          \draw[red, thick] (2,0) rectangle (5,3);
+          \node[font=\tiny] at (2.5, -0.5) {$5\times5 \to 2\times2$};
+        \end{tikzpicture}
+      \end{center}
+    \end{column}
+  \end{columns}
+  
+  \vspace{0.3em}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{Типы padding:}
+      \begin{itemize}
+        \item \textbf{Valid} ($P=0$): $O = (I - K) / S + 1$, сжимает
+        \item \textbf{Same} ($P = \lfloor K/2 \rfloor$): $O = I / S$, сохраняет размер
+        \item \textbf{Full} ($P = K-1$): $O = I + K - 1$, расширяет
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \textbf{Пример:} $I=32$, $K=5$, $S=1$:
+      \begin{itemize}
+        \item Valid: $O = 32 - 5 + 1 = 28$
+        \item Same: $O = 32$ (с $P=2$)
+        \item $K=3$, $S=2$: $O = \lfloor (32 + 0 - 3)/2 \rfloor + 1 = 15$
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === Slide 6: Multiple channels & filters ===
+\begin{frame}{Многоканальные свёртки}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{Свёртка с несколькими каналами:}
+      
+      Вход: $H \times W \times C_{\text{in}}$
+      
+      Ядро: $K_h \times K_w \times C_{\text{in}} \times C_{\text{out}}$
+      
+      Выход: $H' \times W' \times C_{\text{out}}$
+      
+      \vspace{0.3em}
+      Каждый выходной канал — сумма свёрток по всем входным каналам:
+      \[
+      S_j = \sum_{i=1}^{C_{\text{in}}} I_i * K_{ij}
+      \]
+      
+      \vspace{0.3em}
+      \textbf{Параметры:} $K_h \cdot K_w \cdot C_{\text{in}} \cdot C_{\text{out}}$ + $C_{\text{out}}$ bias
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \centering
+      \begin{tikzpicture}[scale=0.55]
+        % Input channels -- offset rectangles show multiple channels
+        \draw[blue!20, thick] (0,0) rectangle (2,2);
+        \draw[blue!20, thick] (0.3,0.3) rectangle (2.3,2.3);
+        \draw[blue!20, thick] (0.6,0.6) rectangle (2.6,2.6);
+        \node[font=\tiny] at (1.3, -0.4) {вход $C_{\text{in}}$};
+        
+        % Kernel
+        \draw[orange!60, thick] (3.5,1) rectangle (5,2.5);
+        \node[orange, font=\tiny] at (4.25, 0.7) {kernel};
+        \node[orange, font=\tiny] at (4.25, 0.3) {$K_h \times K_w$};
+        
+        % Arrow
+        \draw[->, thick] (2.8,1.5) -- (3.5,1.5);
+        
+        % Output channels
+        \draw[red!30, thick] (6,0) rectangle (7.5,1.5);
+        \draw[red!30, thick] (6.3,0.3) rectangle (7.8,1.8);
+        \draw[red!30, thick] (6.6,0.6) rectangle (8.1,2.1);
+        \node[font=\tiny] at (7.05, -0.4) {выход $C_{\text{out}}$};
+        
+        % Arrow
+        \draw[->, thick] (5.1,1.5) -- (6,1.5);
+      \end{tikzpicture}
+      
+      \vspace{0.3em}
+      $3\times3$, $C_{\text{in}}=64$, $C_{\text{out}}=128$ $\to$ 73\,728 параметров
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === Slide 7: Convolution arithmetic 3D ===
+\begin{frame}{3D свёрточная арифметика}
+  \begin{block}{Полная формула для тензора}
+    \[
+    H_{\text{out}} = \left\lfloor \frac{H_{\text{in}} + 2P_h - K_h}{S_h} \right\rfloor + 1
+    \]
+    \[
+    W_{\text{out}} = \left\lfloor \frac{W_{\text{in}} + 2P_w - K_w}{S_w} \right\rfloor + 1
+    \]
+    \[
+    D_{\text{out}} = C_{\text{out}} \quad\text{(задаётся)}
+    \]
+  \end{block}
+  
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{Количество параметров слоя:}
+      \[
+      \text{params} = K_h \cdot K_w \cdot C_{\text{in}} \cdot C_{\text{out}} + C_{\text{out}}
+      \]
+      
+      \textbf{Размер receptive field:}
+      \[
+      RF_{l} = RF_{l-1} + (K_l - 1) \cdot \prod_{i=1}^{l-1} S_i
+      \]
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \textbf{Примеры:}
+      
+      \begin{tabular}{lll}
+        \toprule
+        Слой & Вход $C_{\text{in}}$ & Параметры \\
+        \midrule
+        $3\times3$, 64 & 3 & $3\cdot3\cdot3\cdot64 + 64 = 1792$ \\
+        $5\times5$, 128 & 64 & $5\cdot5\cdot64\cdot128 + 128$ \\
+        & & $= 204\,928$ \\
+        $3\times3$, 512 & 512 & $3\cdot3\cdot512\cdot512 + 512$ \\
+        & & $= 2\,359\,808$ \\
+        \bottomrule
+      \end{tabular}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === Slide 8: Pooling ===
+\begin{frame}{Pooling — субдискретизация}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{Max Pooling:}
+      \[
+      y_{ij} = \max_{u=1..K, v=1..K} x_{i\cdot S+u, j\cdot S+v}
+      \]
+      \begin{itemize}
+        \item Инвариантность к малым сдвигам
+        \item Выделяет наиболее активный признак
+        \item Нет обучаемых параметров
+      \end{itemize}
+      
+      \textbf{Average Pooling:}
+      \[
+      y_{ij} = \frac{1}{K^2} \sum_{u,v} x_{i\cdot S+u, j\cdot S+v}
+      \]
+      Более «гладкий» выход.
+      
+      \textbf{Global Pooling:} pooling по всему пространству $\to$ $1\times1$.
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \centering
+      \begin{tikzpicture}[scale=0.5]
+        % Input 4x4 with values
+        \draw[step=1cm, black!30, thin] (0,0) grid (4,4);
+        \foreach \x/\y/\val in {0.5/3.5/2, 1.5/3.5/4, 2.5/3.5/1, 3.5/3.5/7,
+                             0.5/2.5/3, 1.5/2.5/8, 2.5/2.5/5, 3.5/2.5/2,
+                             0.5/1.5/9, 1.5/1.5/6, 2.5/1.5/3, 3.5/1.5/1,
+                             0.5/0.5/4, 1.5/0.5/2, 2.5/0.5/7, 3.5/0.5/0} {
+          \node at (\x, \y) {\val};
+        }
+        
+        % Max pooling regions
+        \draw[red, thick] (0,2) rectangle (2,4);
+        \draw[red, thick] (2,2) rectangle (4,4);
+        \draw[red, thick] (0,0) rectangle (2,2);
+        \draw[red, thick] (2,0) rectangle (4,2);
+        
+        % Arrow
+        \draw[->, thick] (4.5,2) -- (5.5,2);
+        
+        % Output 2x2
+        \draw[step=1cm, red!60, thick] (6,1) grid (8,3);
+        \node[red] at (6.5, 2.5) {8};
+        \node[red] at (7.5, 2.5) {7};
+        \node[red] at (6.5, 1.5) {9};
+        \node[red] at (7.5, 1.5) {7};
+        
+        \node[font=\tiny] at (2, -0.5) {$4\times4$ input};
+        \node[font=\tiny, red] at (7, 0.5) {$2\times2$ max pool ($K=2,S=2$)};
+      \end{tikzpicture}
+      
+      \vspace{0.3em}
+      \textbf{Зачем нужен pooling:} уменьшение размерности $\to$ меньше параметров $\to$ bigger receptive field без роста вычислений.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === Slide 9: Transposed Convolution ===
+\begin{frame}{Транспонированная свёртка (Deconvolution)}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{Зачем:} увеличение пространственного разрешения.
+      
+      Используется в:
+      \begin{itemize}
+        \item Генеративных моделях (GAN, VAE)
+        \item Сегментации (U-Net, DeepLab)
+        \item Super-resolution
+      \end{itemize}
+      
+      \vspace{0.3em}
+      \textbf{Идея:} обратная операция к обычной свёртке. Если свёртка — «многие-к-одному» (many-to-one), то транспонированная — «один-ко-многим» (one-to-many).
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \textbf{Формула:}
+      \[
+      O = (I - 1) \cdot S + K - 2P
+      \]
+      
+      \textbf{Пример:} $2\times2$ input, $3\times3$ kernel, $S=2$:
+      
+      \begin{tikzpicture}[scale=0.35]
+        % Input
+        \draw[step=1cm, black!30, thin] (0,0) grid (2,2);
+        \node[font=\tiny] at (1, -0.5) {$2\times2$};
+        
+        \draw[->, thick] (2.5,1) -- (3.5,1);
+        
+        % Output 4x4
+        \draw[step=1cm, red!30, thin] (4,0) grid (8,4);
+        \node[font=\tiny, red] at (6, -0.5) {$4\times4$};
+        
+        % Dotted highlighting the expansion
+        \draw[blue, thick] (4,2) rectangle (7,4);
+      \end{tikzpicture}
+      
+      \vspace{0.3em}
+      \textbf{Важно:} это НЕ обратная свёртка. Это свёртка с дробным шагом (fractionally-strided convolution).
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === Slide 10: Dilated Convolution ===
+\begin{frame}{Dilated (Atrous) Convolution}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{Идея:} увеличиваем receptive field без увеличения числа параметров.
+      
+      \vspace{0.3em}
+      \textbf{Формула:}
+      \[
+      K_{\text{effective}} = K + (K-1) \cdot (d-1)
+      \]
+      где $d$ — dilation rate.
+      
+      \vspace{0.3em}
+      \textbf{Пример:} $3\times3$ ядро:
+      \begin{itemize}
+        \item $d=1$: $K_{\text{eff}} = 3$, RF = $3\times3$
+        \item $d=2$: $K_{\text{eff}} = 5$, RF = $5\times5$
+        \item $d=4$: $K_{\text{eff}} = 9$, RF = $9\times9$
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \centering
+      \begin{tikzpicture}[scale=0.3, every node/.style={font=\tiny}]
+        % d=1: 3x3 grid at x=0-3
+        \draw[step=1cm, orange!60, thick] (0,0) grid (3,3);
+        \fill[orange!30] (0,0) rectangle (1,1);
+        \fill[orange!30] (1,0) rectangle (2,1);
+        \fill[orange!30] (2,0) rectangle (3,1);
+        \fill[orange!30] (0,1) rectangle (1,2);
+        \fill[orange!30] (1,1) rectangle (2,2);
+        \fill[orange!30] (2,1) rectangle (3,2);
+        \fill[orange!30] (0,2) rectangle (1,3);
+        \fill[orange!30] (1,2) rectangle (2,3);
+        \fill[orange!30] (2,2) rectangle (3,3);
+        \node at (1.5, -0.6) {$d=1$: $3\times3$};
+        
+        % d=2: holes between (shifted right)
+        \foreach \x in {0,2,4}
+          \foreach \y in {0,2,4}
+            \fill[orange!30] (6+\x,\y) rectangle ++(1,1);
+        \draw[step=1cm, orange!60, thick] (6,0) grid (10,4);
+        \draw[orange!60, thick] (6,0) rectangle (10,4);
+        \node at (8, -0.6) {$d=2$: $5\times5$};
+        
+        % d=3: holes between (shifted further right)
+        \foreach \x in {0,3,6}
+          \foreach \y in {0,3,6}
+            \fill[orange!30] (13+\x,\y) rectangle ++(1,1);
+        \draw[step=1cm, orange!60, thick] (13,0) grid (19,6);
+        \draw[orange!60, thick] (13,0) rectangle (19,6);
+        \node at (16, -0.6) {$d=3$: $7\times7$};
+      \end{tikzpicture}
+      
+      \vspace{0.3em}
+      Одно и то же $3\times3$ ядро, но разный dilation. Параметров не прибавляется!
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === Slide 11: Depthwise Separable Convolution ===
+\begin{frame}{Depthwise Separable Convolution}
+  \begin{columns}[T]
+    \begin{column}{0.55\textwidth}
+      \textbf{Стандартная свёртка:}
+      \[
+      \text{params} = K^2 \cdot C_{\text{in}} \cdot C_{\text{out}}
+      \]
+      
+      \textbf{Depthwise Separable} (2 шага):
+      
+      \textbf{1. Depthwise:} $K \times K$ свёртка для \textit{каждого} канала отдельно:
+      \[
+      \text{params}_{\text{dw}} = K^2 \cdot C_{\text{in}}
+      \]
+      
+      \textbf{2. Pointwise ($1\times1$):} линейная комбинация каналов:
+      \[
+      \text{params}_{\text{pw}} = C_{\text{in}} \cdot C_{\text{out}}
+      \]
+    \end{column}
+    \begin{column}{0.45\textwidth}
+      \textbf{Сравнение параметров:}
+      
+      \begin{tabular}{lcc}
+        \toprule
+        & $3\times3$, $C_{\text{in}}=64$, $C_{\text{out}}=128$ \\
+        \midrule
+        Обычная & $3^2 \cdot 64 \cdot 128 = 73\,728$ \\
+        Depthwise & $3^2 \cdot 64 = 576$ \\
+        Pointwise & $64 \cdot 128 = 8\,192$ \\
+        \textbf{Итого} & \textbf{8\,768} \\
+        \midrule
+        Ускорение & \textbf{8.4x} \\
+        \bottomrule
+      \end{tabular}
+      
+      \vspace{0.5em}
+      Используется в MobileNet, Xception, EfficientNet.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === Slide 12: 1x1 Convolution ===
+\begin{frame}{$1\times1$ Свёртка (Pointwise Convolution)}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{Что делает:} линейная комбинация каналов без пространственного взаимодействия.
+      
+      \[
+      y_{ij}^{(k)} = \sum_{c=1}^{C_{\text{in}}} w_{c}^{(k)} \cdot x_{ij}^{(c)}
+      \]
+      
+      \textbf{Применения:}
+      \begin{itemize}
+        \item Изменение числа каналов (bottleneck)
+        \item Снижение размерности перед $3\times3$ свёрткой
+        \item Аналог FC-слоя для каждого пикселя
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \begin{block}{Bottleneck в ResNet}
+        \centering
+        \begin{tikzpicture}[node distance=0.7cm, auto]
+          \node[draw, fill=blue!20, minimum width=1.5cm, minimum height=0.6cm] (conv1) {$1\times1$, 256 $\to$ 64};
+          \node[draw, fill=green!20, minimum width=1.5cm, minimum height=0.6cm, below=of conv1] (conv2) {$3\times3$, 64 $\to$ 64};
+          \node[draw, fill=blue!20, minimum width=1.5cm, minimum height=0.6cm, below=of conv2] (conv3) {$1\times1$, 64 $\to$ 256};
+          \draw[->] (conv1) -> (conv2);
+          \draw[->] (conv2) -> (conv3);
+          \node[left=of conv2, font=\tiny] {bottleneck};
+        \end{tikzpicture}
+        
+        \vspace{0.3em}
+        $3\times3$ свёртка работает \textbf{в 4 раза быстрее} (64 канала вместо 256).
+      \end{block}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === Slide 13: LeNet-5 ===
+\section{Архитектуры CNN}
+
+\begin{frame}{LeNet-5 (LeCun, 1998)}
+  \begin{columns}[T]
+    \begin{column}{0.45\textwidth}
+      Первая успешная CNN. Для распознавания рукописных цифр (MNIST).
+      
+      \vspace{0.3em}
+      \textbf{Архитектура:}
+      \begin{itemize}
+        \item Вход: $32\times32$ grayscale
+        \item Conv $5\times5$ $\to$ $28\times28\times6$ $\to$ AvgPool $2\times2$ $\to$ $14\times14\times6$
+        \item Conv $5\times5$ $\to$ $10\times10\times16$ $\to$ AvgPool $2\times2$ $\to$ $5\times5\times16$
+        \item Conv $5\times5$ $\to$ $1\times1\times120$ (FC)
+        \item FC 84 $\to$ FC 10 (softmax)
+      \end{itemize}
+      
+      \vspace{0.3em}
+      \textbf{Итог:} 60K параметров.
+    \end{column}
+    \begin{column}{0.55\textwidth}
+      \centering
+      \begin{tikzpicture}[scale=0.4]
+        \draw[fill=gray!20] (0,1) rectangle (4,5);
+        \node[font=\tiny] at (2, 3) {$32\times32$};
+        \node[font=\tiny] at (2, 0.5) {Input};
+        
+        \draw[->, thick] (4.5,3) -- (5.5,3);
+        
+        \draw[fill=blue!20] (6,0) rectangle (10,6);
+        \node[font=\tiny] at (8, 3) {$28\times28$};
+        \node[font=\tiny] at (8, -0.5) {C1};
+        \node[font=\tiny] at (8, -1) {6 каналов};
+        
+        \draw[->, thick] (10.5,3) -- (11.5,3);
+        
+        \draw[fill=green!20] (12,1) rectangle (15,5);
+        \node[font=\tiny] at (13.5, 3) {$14\times14$};
+        \node[font=\tiny] at (13.5, 0.5) {S2 pool};
+        
+        \draw[->, thick] (15.5,3) -- (16.5,3);
+        
+        \draw[fill=blue!20] (17,0) rectangle (22,6);
+        \node[font=\tiny] at (19.5, 3) {$10\times10$};
+        \node[font=\tiny] at (19.5, -0.5) {C3};
+        
+        \draw[->, thick] (22.5,3) -- (23.5,3);
+        
+        \draw[fill=green!20] (24,1) rectangle (27,5);
+        \node[font=\tiny] at (25.5, 0.5) {S4};
+        
+        \draw[->, thick] (28,3) -- (29,3);
+        
+        \draw[fill=red!20] (30,1) rectangle (33,5);
+        \node[font=\tiny] at (31.5, 0.5) {FC};
+      \end{tikzpicture}
+      
+      \vspace{0.3em}
+      \textbf{Наследие:} pattern свёртка $\to$ пулинг $\to$ свёртка $\to$ пулинг $\to$ FC стал шаблоном для всех CNN.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === Slide 14: AlexNet ===
+\begin{frame}{AlexNet (Krizhevsky, 2012)}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{Победитель ImageNet 2012} — переломный момент для DL.
+      
+      \vspace{0.3em}
+      \textbf{Ключевые инновации:}
+      \begin{itemize}
+        \item ReLU вместо tanh
+        \item Data augmentation (сдвиги, отражения)
+        \item Dropout (0.5 на FC-слоях)
+        \item Local Response Normalization
+        \item Обучение на 2 GPU параллельно
+      \end{itemize}
+      
+      \vspace{0.3em}
+      \textbf{Архитектура:}
+      \begin{itemize}
+        \item 5 свёрточных + 3 FC слоя
+        \item Conv: $11\times11$ (96 каналов), $5\times5$ (256), $3\times3$ (384, 384, 256)
+        \item MaxPool $3\times3$ после первых двух и последней свёртки
+        \item FC: 4096 $\to$ 4096 $\to$ 1000 (softmax)
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \begin{block}{Детали}
+        \centering
+        \begin{tabular}{ll}
+          \toprule
+          Параметр & Значение \\
+          \midrule
+          Параметры & 62 млн \\
+          Размер входа & $224\times224\times3$ \\
+          Batch size & 128 \\
+          Learning rate & $10^{-2}$, decay $\times 10$ \\
+          Эпох & 90 \\
+          Время & 5--6 дней \\
+          \bottomrule
+        \end{tabular}
+      \end{block}
+      
+      \vspace{0.3em}
+      \textbf{Влияние:}
+      \begin{itemize}
+        \item Показал, что DL работает на реальных задачах
+        \item Запустил эру глубокого обучения
+        \item Все современные CNN — наследники AlexNet
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === Slide 15: VGG ===
+\begin{frame}{VGG (Simonyan \& Zisserman, 2014)}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{Главная идея:} стек из $3\times3$ свёрток.
+      
+      \vspace{0.3em}
+      Два $3\times3$ слоя $\to$ RF $5\times5$.
+      Три $3\times3$ слоя $\to$ RF $7\times7$.
+      
+      \textbf{Почему это выгодно?}
+      \begin{itemize}
+        \item $3\times3$: 9 параметров на канал
+        \item $5\times5$: 25 параметров на канал
+        \item $7\times7$: 49 параметров на канал
+        \item + Дополнительные нелинейности (ReLU)
+      \end{itemize}
+      
+      \textbf{VGG:}
+      \begin{itemize}
+        \item Conv $3\times3$: 64 $\to$ 128 $\to$ 256 $\to$ 512 $\to$ 512
+        \item MaxPool $2\times2$ после каждой группы
+        \item 3 FC слоя (4096, 4096, 1000)
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \begin{block}{Сравнение}
+        \centering
+        \begin{tabular}{lrr}
+          \toprule
+          & VGG16 & VGG19 \\
+          \midrule
+          Параметры & 138M & 144M \\
+          Слоёв (weights) & 16 & 19 \\
+          ImageNet top-5 & 8.8\% & 7.5\% \\
+          Размер модели & 528 MB & 548 MB \\
+          \bottomrule
+        \end{tabular}
+      \end{block}
+      
+      \vspace{0.3em}
+      \textbf{Недостаток:} очень много параметров (138M), тяжело.
+      
+      \vspace{0.3em}
+      \textbf{Влияние:} показал, что \textbf{глубина} важнее ширины. Унифицированный дизайн стал стандартом.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === Slide 16: Inception / GoogLeNet ===
+\begin{frame}{Inception (GoogLeNet, Szegedy 2014)}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{Проблема:} какой размер ядра выбрать? $1\times1$, $3\times3$, $5\times5$?
+      
+      \textbf{Решение:} используем \textbf{все сразу!}
+      
+      \vspace{0.3em}
+      \textbf{Inception module:}
+      \begin{itemize}
+        \item Параллельные ветки:
+        \begin{itemize}
+          \item $1\times1$ свёртка
+          \item $1\times1$ $\to$ $3\times3$
+          \item $1\times1$ $\to$ $5\times5$
+          \item $3\times3$ MaxPool $\to$ $1\times1$
+        \end{itemize}
+        \item Конкатенация по каналам
+      \end{itemize}
+      
+      \vspace{0.3em}
+      \textbf{Bottleneck:} $1\times1$ перед дорогими $3\times3$ и $5\times5$ снижает размерность.
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \centering
+      \begin{tikzpicture}[scale=0.5]
+        \node[draw, fill=gray!20, minimum width=2.8cm, minimum height=0.6cm] (input) at (-1.5,0) {Prev. layer};
+        
+        % First row branches
+        \node[draw, fill=blue!20, minimum width=1.0cm, minimum height=0.5cm] (c1) at (-6, -2.1) {$1\times1$};
+        \node[draw, fill=green!20, minimum width=1.0cm, minimum height=0.5cm] (c2a) at (-3, -2.1) {$1\times1$};
+        \node[draw, fill=red!20, minimum width=1.0cm, minimum height=0.5cm] (c3a) at (0, -2.1) {$1\times1$};
+        \node[draw, fill=orange!20, minimum width=1.5cm, minimum height=0.5cm] (p1) at (3, -2.1) {$3\times3$ pool};
+        
+        % Second row
+        \node[draw, fill=green!20, minimum width=1.0cm, minimum height=0.5cm] (c2b) at (-3, -4.2) {$3\times3$};
+        \node[draw, fill=red!20, minimum width=1.0cm, minimum height=0.5cm] (c3b) at (0, -4.2) {$5\times5$};
+        \node[draw, fill=orange!20, minimum width=1.5cm, minimum height=0.5cm] (p2) at (3, -4.2) {$1\times1$};
+        
+        % Concat
+        \node[draw, fill=gray!30, minimum width=6cm, minimum height=0.5cm] (concat) at (-1.5, -6.3) {Concat (by channels)};
+        
+        % Connections from input
+        \draw[->] (input.south) -- (c1.north);
+        \draw[->] (input.south) -- (c2a.north);
+        \draw[->] (input.south) -- (c3a.north);
+        \draw[->] (input.south) -- (p1.north);
+        
+        % Down connections
+        \draw[->] (c2a.south) -- (c2b.north);
+        \draw[->] (c3a.south) -- (c3b.north);
+        \draw[->] (p1.south) -- (p2.north);
+        
+        % To concat
+        \draw[->] (c1.south) -- (concat.north -| c1.south);
+        \draw[->] (c2b.south) -- (concat.north -| c2b.south);
+        \draw[->] (c3b.south) -- (concat.north -| c3b.south);
+        \draw[->] (p2.south) -- (concat.north -| p2.south);
+      \end{tikzpicture}
+      
+      \vspace{0.3em}
+      6.8M параметров (VGG: 138M)!
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === Slide 17: ResNet ===
+\begin{frame}{ResNet (He et al., 2015)}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{Проблема:} при $>20$ слоях качество падает (degradation problem).
+      
+      \textbf{Не из-за overfitting:} и train, и test loss растут.
+      
+      \vspace{0.3em}
+      \textbf{Решение: Residual Learning}
+      \[
+      F(x) = H(x) - x \quad\Rightarrow\quad H(x) = F(x) + x
+      \]
+      
+      \begin{itemize}
+        \item Слой учится \textbf{добавке} к тождественному отображению
+        \item Если слой не нужен: $F(x) \to 0$, $H(x) \to x$
+        \item Градиент течёт через shortcut напрямую
+      \end{itemize}
+      
+      \vspace{0.3em}
+      \textbf{Результат:} 152 слоя, 3.57\% top-5 error на ImageNet.
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \centering
+      \begin{tikzpicture}[scale=0.5]
+        \node[draw, fill=blue!20, minimum width=2cm, minimum height=0.6cm] (weight1) {Weight layer};
+        \node[draw, fill=blue!20, minimum width=2cm, minimum height=0.6cm, below=0.4 of weight1] (act1) {ReLU};
+        \node[draw, fill=blue!20, minimum width=2cm, minimum height=0.6cm, below=0.4 of act1] (weight2) {Weight layer};
+        \node[draw, fill=red!20, minimum width=2cm, minimum height=0.6cm, below=0.4 of weight2] (act2) {ReLU};
+        
+        % Shortcut
+        \draw[->, thick] (weight1.west) -- ++(-1.2,0) node[above, font=\tiny] {$x$} |- (act2.west);
+        \draw[->, thick] (weight1) -- (act1);
+        \draw[->, thick] (act1) -- (weight2);
+        \draw[->, thick] (weight2) -- (act2);
+        
+        \node[font=\tiny] at (2.5, -0.8) {$F(x) = \text{Weight}_2(\text{ReLU}(\text{Weight}_1(x)))$};
+        \node[font=\tiny] at (2.5, -1.3) {$H(x) = F(x) + x$};
+      \end{tikzpicture}
+      
+      \vspace{0.5em}
+      \textbf{Bottleneck block:}
+      
+      $1\times1\ (256\to64) \to 3\times3\ (64\to64) \to 1\times1\ (64\to256)$
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === Slide 18: DenseNet ===
+\begin{frame}{DenseNet (Huang et al., 2017)}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{Идея:} каждый слой получает на вход \textbf{feature maps со всех предыдущих слоёв}.
+      
+      \[
+      x_l = H_l([x_0, x_1, \dots, x_{l-1}])
+      \]
+      
+      \vspace{0.3em}
+      \textbf{Почему это работает:}
+      \begin{itemize}
+        \item Максимальный поток информации и градиентов
+        \item Каждый слой имеет прямой доступ к градиенту лосса
+        \item Естественная регуляризация
+        \item Меньше параметров (нет дублирующих признаков)
+      \end{itemize}
+      
+      \vspace{0.3em}
+      \textbf{Недостаток:} большой расход памяти (нужно хранить все активации).
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \centering
+      \begin{tikzpicture}[scale=0.6]
+        \node[draw, fill=blue!20, minimum width=0.6cm, minimum height=0.6cm] (x0) {$x_0$};
+        \node[draw, fill=green!20, minimum width=0.6cm, minimum height=0.6cm, right=0.3 of x0] (h1) {$H_1$};
+        \node[draw, fill=blue!20, minimum width=0.6cm, minimum height=0.6cm, right=0.3 of h1] (x1) {$x_1$};
+        \node[draw, fill=green!20, minimum width=0.6cm, minimum height=0.6cm, right=0.3 of x1] (h2) {$H_2$};
+        \node[draw, fill=blue!20, minimum width=0.6cm, minimum height=0.6cm, right=0.3 of h2] (x2) {$x_2$};
+        \node[draw, fill=green!20, minimum width=0.6cm, minimum height=0.6cm, right=0.3 of x2] (h3) {$H_3$};
+        \node[draw, fill=blue!20, minimum width=0.6cm, minimum height=0.6cm, right=0.3 of h3] (x3) {$x_3$};
+        
+        \draw[->] (x0) -- (h1);
+        \draw[->] (h1) -- (x1);
+        \draw[->] (x1) -- (h2);
+        \draw[->] (h2) -- (x2);
+        \draw[->] (x2) -- (h3);
+        \draw[->] (h3) -- (x3);
+        
+        % Dense connections
+        \draw[->, dashed, gray!60] (x0) to[out=30, in=150] (h2);
+        \draw[->, dashed, gray!60] (x0) to[out=20, in=160] (h3);
+        \draw[->, dashed, gray!60] (x1) to[out=30, in=150] (h3);
+        
+        \node[font=\tiny] at (2.5, -0.5) {growth rate $k$: каждый слой добавляет $k$ каналов};
+      \end{tikzpicture}
+      
+      \vspace{0.5em}
+      DenseNet-121: 8M params vs ResNet-50: 25M (при схожем качестве).
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === Slide 19: MobileNet & EfficientNet ===
+\begin{frame}{MobileNet (2017) и EfficientNet (2019)}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{MobileNet:}
+      \begin{itemize}
+        \item Depthwise Separable Conv
+        \item Width multiplier ($\alpha$)
+        \item Resolution multiplier ($\rho$)
+        \item 4.2M params, 569M FLOPs
+      \end{itemize}
+      
+      \textbf{MobileNetV2:}
+      \begin{itemize}
+        \item Inverted Residual: узкий $\to$ широкий $\to$ узкий
+        \item Linear bottleneck (ReLU не убивает информацию в узком слое)
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \textbf{EfficientNet (Tan \& Le, 2019):}
+      
+      \textbf{Ключевая идея:} композитное масштабирование
+      
+      \vspace{0.3em}
+      Обычно: масштабируют \textbf{один} параметр (глубину, ширину или разрешение).
+      
+      EfficientNet: масштабирует \textbf{все три} сбалансированно:
+      \[
+      \begin{aligned}
+        d &= \alpha^\phi \\
+        w &= \beta^\phi \\
+        r &= \gamma^\phi
+      \end{aligned}
+      \]
+      где $\alpha\beta^2\gamma^2 \approx 2$ (FLOPs растут в $2^\phi$ раз).
+      
+      \vspace{0.3em}
+      EfficientNet-B7: 66M params, достигает SOTA при \textbf{в 10x меньше параметров}, чем предыдущие SOTA.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === Slide 20: Summary ===
+\begin{frame}{Сводка архитектур}
+  \centering
+  \small
+  \begin{tabular}{lrrrl}
+    \toprule
+    \textbf{Архитектура} & \textbf{Год} & \textbf{Парам.} & \textbf{Top-5} & \textbf{Ключевая идея} \\
+    \midrule
+    LeNet-5 & 1998 & 60K & — & Первая CNN \\
+    AlexNet & 2012 & 62M & 16.4\% & ReLU, Dropout, GPU \\
+    VGG16 & 2014 & 138M & 8.8\% & $3\times3$ стеки \\
+    GoogLeNet & 2014 & 6.8M & 6.7\% & Inception modules \\
+    ResNet-152 & 2015 & 60M & 3.6\% & Skip connections \\
+    DenseNet-121 & 2017 & 8M & 5.6\% & Dense connections \\
+    MobileNetV2 & 2018 & 3.5M & — & Depthwise sep. \\
+    EfficientNet-B7 & 2019 & 66M & 2.2\% & Compound scaling \\
+    \bottomrule
+  \end{tabular}
+  
+  \vspace{1em}
+  \begin{block}{Правило большого пальца}
+    Чем новее архитектура — тем больше качество при меньшем числе параметров. Но ResNet — «рабочая лошадка» до сих пор.
+  \end{block}
+\end{frame}
+
+% === Slide 21: Conclusion ===
+\begin{frame}{Заключение}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{Что мы узнали:}
+      \begin{itemize}
+        \item Свёртка — эффективная альтернатива полносвязным слоям
+        \item Свёрточная арифметика: $I$, $K$, $P$, $S$
+        \item Базовые блоки: свёртка, пулинг, транспонированная свёртка
+        \item Специализированные: dilated, depthwise separable
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \textbf{Эволюция архитектур:}
+      \begin{itemize}
+        \item LeNet: паттерн
+        \item AlexNet: масштаб
+        \item VGG: глубина
+        \item Inception: ширина
+        \item ResNet: skip connections
+        \item DenseNet: dense connections
+        \item EfficientNet: compound scaling
+      \end{itemize}
+    \end{column}
+  \end{columns}
+  
+  \vspace{1em}
+  \begin{center}
+    \textcolor{blue!70!black}{\textbf{«В глубоком обучении глубина — это новая ширина»}} \\
+    \tiny{— но, как показал Transformer, иногда внимание важнее глубины}
+  \end{center}
+\end{frame}
+
+\end{document}

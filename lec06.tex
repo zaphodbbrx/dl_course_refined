@@ -1,0 +1,158 @@
+\documentclass[a4paper,12pt]{article}
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{hyperref}
+\usepackage{geometry}
+\geometry{top=2cm, bottom=2cm, left=2.5cm, right=2.5cm}
+
+\title{Конспект лекции 6: \\ Архитектура Transformer}
+\author{Липкин С.М.}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{От RNN к Transformer}
+
+\subsection{Проблемы RNN}
+\begin{itemize}
+    \item Последовательная обработка: $O(n)$ шагов, нет параллелизма на GPU.
+    \item Затухающие градиенты: связи на расстоянии $> 50$--100 токенов теряются.
+    \item LSTM/GRU помогли, но не решили проблему кардинально.
+    \item Механизм Attention (Bahdanau, 2015) — шаг вперёд, но всё ещё на базе RNN.
+\end{itemize}
+
+\subsection{Решение: Transformer (Vaswani et al., NeurIPS 2017)}
+\begin{itemize}
+    \item Вся последовательность за один проход (параллельно).
+    \item Self-Attention: каждый токен напрямую связан с любым другим за $O(1)$ шагов.
+    \item Никаких RNN-слоёв: только Attention + FFN.
+    \item Сложность $O(n^2)$, на практике $n \le 512$--1024.
+\end{itemize}
+
+\section{Общая архитектура: Encoder--Decoder}
+
+Transformer состоит из $N = 6$ блоков энкодера и 6 блоков декодера.
+
+\subsection{Encoder}
+Каждый блок энкодера:
+\begin{enumerate}
+    \item Multi-Head Self-Attention.
+    \item Add \& Layer Normalization (residual connection).
+    \item Feed-Forward Network (FFN).
+    \item Add \& Layer Normalization.
+\end{enumerate}
+
+\subsection{Decoder}
+Каждый блок декодера:
+\begin{enumerate}
+    \item Masked Multi-Head Self-Attention (каузальная маска, запрет на будущие токены).
+    \item Add \& Layer Normalization.
+    \item Cross-Attention (Encoder--Decoder Attention): Q из Decoder, K, V из Encoder.
+    \item Add \& Layer Normalization.
+    \item Feed-Forward Network.
+    \item Add \& Layer Normalization.
+\end{enumerate}
+
+\section{Входные представления}
+
+\subsection{Токенизация и Embedding}
+Стандартный pipeline: токенизация (BPE, WordPiece, Unigram) $\to$ Embedding $V \times d_{\text{model}}$.
+
+\subsection{Positional Encoding}
+Так как Self-Attention инвариантен к порядку, необходимо добавить позиционную информацию:
+\[
+\text{PE}(pos, 2i) = \sin\left(\frac{pos}{10000^{2i/d_{\text{model}}}}\right), \quad
+\text{PE}(pos, 2i+1) = \cos\left(\frac{pos}{10000^{2i/d_{\text{model}}}}\right)
+\]
+Интуиция: каждая размерность — синусоида со своей частотой. Младшие $i$ $\to$ высокая частота (точная позиция), старшие $i$ $\to$ низкая частота (глобальный контекст). Сумма, а не конкатенация: $X = \text{TokenEmbedding}(X) + \text{PositionalEncoding}(X)$.
+
+\paragraph{Современные альтернативы:}
+\begin{itemize}
+    \item Обучаемые Positional Embedding (BERT, GPT).
+    \item RoPE (Rotary Position Embedding) — поворот Q и K на угол, зависящий от позиции.
+    \item ALiBi (2022) — линейный штраф на attention score по расстоянию.
+\end{itemize}
+
+\section{Scaled Dot-Product Attention}
+\[
+\text{Attention}(Q, K, V) = \text{softmax}\left(\frac{Q K^T}{\sqrt{d_k}}\right) V
+\]
+где $Q \in \mathbb{R}^{n \times d_k}$, $K \in \mathbb{R}^{m \times d_k}$, $V \in \mathbb{R}^{m \times d_v}$.
+
+$Q_i$ — «что ищет $i$-й токен?», $K_j$ — «что предлагает $j$-й токен?». $QK^T$ — матрица близости $n \times m$, softmax даёт распределение по строкам.
+
+\paragraph{Зачем делить на $\sqrt{d_k}$?}
+Если $q, k$ — независимые случайные векторы с компонентами $N(0,1)$, то $\operatorname{Var}(q\cdot k) = d_k$. Без деления softmax получает большие значения $\to$ острые распределения, градиент около нуля. Деление нормализует дисперсию к 1.
+
+\paragraph{Интуиция:} Attention = информационный поиск. Q = поисковый запрос, K = аннотация документов, V = содержание документов. Self-Attention: Q, K, V — всё из одной последовательности. Каждый токен «смотрит» на все остальные и собирает релевантную информацию (контекстуализация).
+
+\section{Multi-Head Attention}
+
+Одна голова — один тип отношений. Multi-Head = $h$ параллельных «экспертов»:
+\[
+\text{MultiHead}(Q, K, V) = \text{Concat}(\text{head}_1, \dots, \text{head}_h) W_O
+\]
+\[
+\text{head}_i = \text{Attention}(Q W_Q^i, K W_K^i, V W_V^i)
+\]
+$h = 8$, $d_k = d_v = d_{\text{model}} / h = 64$. Параметры на один слой attention: $\approx 1.05$M. $\sim 70\%$ параметров блока — в FFN ($d_{ff} = 2048$).
+
+\section{Feed-Forward Network (FFN)}
+\[
+\text{FFN}(x) = \text{ReLU}(x W_1 + b_1) W_2 + b_2
+\]
+Point-wise — один FFN к каждому токену. $d_{ff} = 4 \cdot d_{\text{model}} = 2048$. FFN — «память» модели: запоминает комбинации признаков. Современные варианты: GeLU (BERT, GPT), SwiGLU/GLU variants (Llama).
+
+\section{Residual Connections и Layer Normalization}
+\[
+x_{l+1} = \text{LayerNorm}(x_l + \text{Sublayer}(x_l))
+\]
+Градиент проходит напрямую через residual connection:
+\[
+\frac{\partial L}{\partial x_l} = \frac{\partial L}{\partial x_{l+1}} \left(1 + \frac{\partial \text{Sub}}{\partial x_l}\right)
+\]
+LayerNorm: нормализация по признакам (не по батчу):
+\[
+\text{LayerNorm}(x) = \gamma \cdot \frac{x - \mu}{\sigma} + \beta
+\]
+
+\section{Маскирование}
+
+\paragraph{Padding Mask:} $-\infty$ для padding-токенов — softmax даёт 0, токен игнорируется.
+
+\paragraph{Look-Ahead Mask (Decoder):} верхняя треугольная матрица с $-\infty$ — токен на $i$ видит только $\le i$. Предотвращает подглядывание в будущее.
+
+\section{Обучение}
+
+\paragraph{Loss:} Cross-Entropy, каждый шаг декодирования — свой loss.
+\paragraph{Teacher Forcing:} на каждом шаге подаются реальные токены (ускоряет обучение, но даёт exposure bias).
+\paragraph{Optimizer:} Adam ($\beta_1=0.9$, $\beta_2=0.98$, $\varepsilon=10^{-9}$) с rate schedule: linear warmup (4k шагов) + inverse sqrt decay.
+
+\section{Инференс}
+
+Авторегрессивная генерация: на каждом шаге подаём сгенерированную последовательность. \textbf{KV-кэширование} — $K_{\text{enc}}, V_{\text{enc}}$ считаются один раз, на каждом шаге декодера — только для нового токена.
+
+Стратегии декодирования: greedy (argmax), beam search ($B=4$--8), top-K sampling, nucleus (top-p) sampling. Temperature: $\tau \in [0.7, 1.5]$.
+
+\section{Применения}
+
+\begin{itemize}
+    \item \textbf{BERT (Encoder-only)}: маскированный LM + NSP, 110M--340M параметров. Классификация, NER, QA.
+    \item \textbf{GPT (Decoder-only)}: авторегрессивный LM. GPT-3: 175B, GPT-4: $\sim 1.8$T. Few-shot, in-context learning.
+    \item \textbf{T5}: все задачи $\to$ текст (text-to-text).
+    \item Другие: BART, RoBERTa, Llama, Mistral, Gemini.
+    \item Мультимодальные: ViT, CLIP, Whisper, Flamingo.
+\end{itemize}
+
+\section{Выводы}
+
+Преимущества: параллелизация, долгосрочные зависимости за $O(1)$ шагов, скейлинг до $1.8$T+ параметров, универсальность.
+
+Ограничения: $O(n^2)$ сложность (дорого при $n > 4096$), нет врождённой позиции, требует много данных, дорогой инференс.
+
+Решение для длинных последовательностей: Longformer, Reformer, Linformer, Mamba (SSM).
+
+\end{document}

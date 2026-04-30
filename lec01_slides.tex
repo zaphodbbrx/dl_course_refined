@@ -1,0 +1,689 @@
+\documentclass[aspectratio=169, 9pt]{beamer}
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{amsmath,amssymb,bm}
+\usepackage{graphicx}
+\usepackage{tikz}
+\usetikzlibrary{arrows.meta, positioning, shapes, calc, fit, backgrounds, patterns, matrix}
+
+\usetheme{Ilmenau}
+\usecolortheme{default}
+\setbeamercolor{background canvas}{bg=white}
+\setbeamercolor{normal text}{fg=black}
+\setbeamercolor{frametitle}{fg=blue!80!black, bg=blue!5}
+\setbeamercolor{title}{fg=white}
+\setbeamercolor{item}{fg=blue!70}
+\setbeamerfont{title}{size=\large, series=\bfseries}
+\setbeamerfont{subtitle}{size=\normalsize}
+\setbeamercolor{block title}{fg=white, bg=blue!60}
+\setbeamercolor{block body}{bg=blue!5}
+\setbeamertemplate{navigation symbols}{}
+\setbeamertemplate{footline}{
+  \leavevmode
+  \hbox{
+    \begin{beamercolorbox}[wd=.5\paperwidth,ht=2ex,dp=1ex,left]{author in head/foot}
+      \hspace*{1em}\insertshortauthor
+    \end{beamercolorbox}
+    \begin{beamercolorbox}[wd=.5\paperwidth,ht=2ex,dp=1ex,right]{date in head/foot}
+      \insertframenumber{} / \inserttotalframenumber\hspace*{1em}
+    \end{beamercolorbox}}
+  \vskip0pt
+}
+
+\title{Введение в Deep Learning}
+\subtitle{Основные концепции, проблемы и методы их решения}
+\author{Курс «Deep Learning»}
+\date{2026}
+
+% === TikZ styles ===
+\tikzset{
+  neuron/.style={circle, draw=blue!60, fill=blue!20, minimum size=6mm, inner sep=0pt, font=\scriptsize},
+  input/.style={neuron, fill=green!20, draw=green!50!black},
+  hidden/.style={neuron, fill=blue!20, draw=blue!60},
+  output/.style={neuron, fill=red!20, draw=red!50!black},
+  conn/.style={gray!40, line width=0.4pt},
+  layer/.style={draw, rounded corners, dashed, inner sep=4mm, label={[font=\tiny]above:#1}},
+  optim/.style={-{Stealth[scale=1.2]}, thick},
+  func plot/.style={thick, blue!70!black, smooth}
+}
+
+\begin{document}
+
+% === SLIDE 1: Title ===
+\begin{frame}
+  \titlepage
+\end{frame}
+
+% === SLIDE 2: Plan ===
+\begin{frame}{План лекции}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \begin{itemize}
+        \item \textbf{Что такое Deep Learning?}
+        \item Нейронная сеть — базовые идеи
+        \item Анатомия обучения: функция потерь, градиентный спуск
+        \item \textbf{Проблемы глубоких сетей}
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \begin{itemize}
+        \item \textbf{Методы решения:}
+        \begin{itemize}
+          \item Продвинутые оптимизаторы
+          \item Инициализация весов
+          \item Функции активации
+          \item Нормализация
+          \item Регуляризация
+        \end{itemize}
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === SLIDE 3: What is DL ===
+\begin{frame}{Что такое Deep Learning?}
+  \begin{columns}[T]
+    \begin{column}{0.55\textwidth}
+      \textbf{Глубокое обучение} — подраздел машинного обучения, использующий многослойные нейронные сети для извлечения иерархических признаков.
+      
+      \vspace{0.3em}
+      Ключевые идеи:
+      \begin{itemize}
+        \item \textbf{Сквозное обучение} (end-to-end): сырые данные $\to$ ответ
+        \item \textbf{Иерархия признаков}: от простых к сложным
+        \item \textbf{Масштабирование}: чем больше данных и параметров — тем лучше
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.45\textwidth}
+      \begin{center}
+        \begin{tikzpicture}[scale=0.45, transform shape]
+          % Neural network visualization
+          \def\numI{4}
+          \def\numH{5}
+          \def\numHt{4}
+          \def\numO{2}
+          \def\ldist{2.2}
+          
+          % Layer 1: input
+          \foreach \i [count=\x] in {1,...,\numI}
+            \node[input] (i\x) at (0, -\x*1.1+2.2) {$x_\x$};
+          
+          % Layer 2: hidden
+          \foreach \i [count=\x] in {1,...,\numH}
+            \node[hidden] (h1\x) at (\ldist, -\x*0.9+2.7) {};
+          
+          % Layer 3: hidden
+          \foreach \i [count=\x] in {1,...,\numHt}
+            \node[hidden] (h2\x) at ({2*\ldist}, -\x*1.1+2.2) {};
+          
+          % Layer 4: output
+          \foreach \i [count=\x] in {1,...,\numO}
+            \node[output] (o\x) at ({3*\ldist}, -\x*1.5+2.0) {$\hat{y}_\x$};
+          
+          % Connections input→hidden1
+          \foreach \i in {1,...,\numI}
+            \foreach \j in {1,...,\numH}
+              \draw[conn] (i\i) -- (h1\j);
+          
+          % Connections hidden1→hidden2
+          \foreach \i in {1,...,\numH}
+            \foreach \j in {1,...,\numHt}
+              \draw[conn] (h1\i) -- (h2\j);
+          
+          % Connections hidden2→output
+          \foreach \i in {1,...,\numHt}
+            \foreach \j in {1,...,\numO}
+              \draw[conn] (h2\i) -- (o\j);
+          
+          % Layer labels
+          \node[below=1.2cm of i1.south] {\tiny Вход};
+          \node[below=1.2cm of h11.south] {\tiny Скрытые};
+          \node[below=1.2cm of o1.south] {\tiny Выход};
+        \end{tikzpicture}
+      \end{center}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === SLIDE 4: Anatomy of training ===
+\begin{frame}{Анатомия обучения: градиентный спуск}
+  \begin{block}{Стандартный цикл обучения}
+    1. Forward pass: $y = f(x; \theta)$ \hfill
+    2. Loss $\mathcal{L}(y, y_{\text{true}})$ \hfill
+    3. Backward: $\nabla_\theta \mathcal{L}$ \hfill
+    4. Update: $\theta \leftarrow \theta - \eta \nabla_\theta \mathcal{L}$
+  \end{block}
+  
+  \begin{columns}[T]
+    \begin{column}{0.45\textwidth}
+      \textbf{Стохастический градиентный спуск (SGD):}
+      \[
+      \theta_{t+1} = \theta_t - \eta \, \nabla_\theta \mathcal{L}(\theta_t; x^{(i)}, y^{(i)})
+      \]
+      \begin{itemize}
+        \item $\eta$ — learning rate
+        \item Случайный мини-батч
+        \item Шумный, но быстрый
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.55\textwidth}
+      \centering
+      \begin{tikzpicture}[scale=0.8]
+        \draw[->] (-2.2,0) -- (2.5,0) node[right] {$\theta$};
+        \draw[->] (0,-0.3) -- (0,3) node[above] {$\mathcal{L}$};
+        \draw[func plot, domain=-2:2, samples=100] plot (\x, {0.5*\x*\x + 0.1*\x*\x*\x*\x + 0.2});
+        \fill[red] (-0.5,0.35) circle (2pt);
+        \draw[->,red,thick] (-0.5,0.35) -- (-0.8,0.55);
+        \node[below left,red,font=\tiny] at (-0.5,0.35) {начало};
+        \fill[green!50!black] (1.2,{0.5*1.44+0.1*2.0736+0.2}) circle (2pt);
+        \node[right,green!50!black,font=\tiny] {минимум};
+      \end{tikzpicture}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === SLIDE 5: Vanishing/Exploding Gradients ===
+\begin{frame}{Проблема 1: Исчезающие и взрывающиеся градиенты}
+  \begin{columns}[T]
+    \begin{column}{0.55\textwidth}
+      \textbf{Причина:} цепное правило при обратном распространении
+      \[
+      \frac{\partial \mathcal{L}}{\partial \theta_1} = 
+      \frac{\partial \mathcal{L}}{\partial h_L} \prod_{k=2}^{L} 
+      \frac{\partial h_k}{\partial h_{k-1}}
+      \]
+      
+      Если $\|\partial h_k / \partial h_{k-1}\| < 1$ $\to$ \textbf{исчезает} (ранние слои не обучаются)
+      
+      Если $> 1$ $\to$ \textbf{взрывается} (NaN, нестабильность)
+      
+      \vspace{0.3em}
+      \textbf{Классический пример:} sigmoid/tanh в глубоких сетях.
+    \end{column}
+    \begin{column}{0.45\textwidth}
+      \centering
+      \begin{tikzpicture}[scale=0.8]
+        \draw[->] (-2.2,0) -- (2.2,0) node[right] {$x$};
+        \draw[->] (0,-0.3) -- (0,2.5) node[above] {$\sigma(x)$};
+        \draw[func plot, domain=-2.2:2.2, samples=100] plot (\x, {1/(1+exp(-\x))});
+        \node[blue!70!black] at (1.2,2.0) {sigmoid};
+        \draw[dashed, red] (-2.2, 0.5) -- (2.2, 0.5);
+        \node[red, above right, font=\tiny] at (-2.2,0.5) {насыщение};
+        \draw[->,red,thick] (-1.8,0.14) -- (-1.5,0.2);
+        \node[red, font=\tiny] at (-1.8,0.0) {$\sigma' \approx 0$};
+      \end{tikzpicture}
+      
+      \vspace{0.3em}
+      Производная sigmoid: $\sigma'(x) = \sigma(x)(1-\sigma(x)) \le 0.25$
+      
+      В 10 слоях: $0.25^{10} \approx 10^{-6}$ — градиент пропал.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === SLIDE 6: Overfitting ===
+\begin{frame}{Проблема 2: Переобучение (Overfitting)}
+  \begin{columns}[T]
+    \begin{column}{0.45\textwidth}
+      \textbf{Модель запоминает шум}, а не закономерности.
+      
+      \vspace{0.3em}
+      Симптомы:
+      \begin{itemize}
+        \item Loss на train $\to 0$
+        \item Loss на val растёт
+        \item Высокая variance
+      \end{itemize}
+      
+      \vspace{0.3em}
+      \textbf{Факторы риска:}
+      \begin{itemize}
+        \item Мало данных
+        \item Слишком много параметров
+        \item Шум в разметке
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.55\textwidth}
+      \centering
+      \begin{tikzpicture}[scale=0.9]
+        % Points
+        \foreach \x/\y in {0.2/0.3, 0.4/0.5, 0.6/0.4, 0.8/0.7, 1.0/0.6, 
+                            1.2/0.9, 1.4/0.7, 1.6/1.0, 1.8/0.9, 2.0/1.2,
+                            2.2/1.0, 2.4/1.3, 2.6/1.1, 2.8/1.4, 3.0/1.3}
+          \fill[blue!60] (\x/1.2, \y/1.5) circle (2pt);
+        
+        % Underfit line
+        \draw[red, dashed, thick, domain=0:2.5, samples=10] 
+          plot (\x, {0.15 + 0.4*\x}) node[above, font=\tiny] {underfit};
+        
+        % Overfit line  
+        \draw[green!50!black, thick, domain=0:2.5, samples=50] 
+          plot (\x, {0.2 + 0.7*\x - 0.3*\x*\x + 0.05*\x*\x*\x + 0.01*sin(5*\x*180/3.14)}) 
+          node[above, font=\tiny] {overfit};
+        
+        % Good fit
+        \draw[blue, thick, domain=0:2.5, samples=20]
+          plot (\x, {0.2 + 0.5*\x - 0.03*\x*\x}) 
+          node[above, font=\tiny] {хорошо};
+        
+        \draw[->] (0,0) -- (2.8,0) node[right] {$x$};
+        \draw[->] (0,0) -- (0,1.2) node[above] {$y$};
+      \end{tikzpicture}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === SLIDE 7: Problem 3 - Local Minima, Saddle Points ===
+\begin{frame}{Проблема 3: Локальные минимумы и седловые точки}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      В многомерных пространствах седловые точки встречаются \textbf{гораздо чаще}, чем локальные минимумы.
+      
+      \vspace{0.3em}
+      \begin{block}{Почему это проблема?}
+        В седловой точке $\nabla f = 0$, но в одних направлениях минимум, в других — максимум. SGD «застревает».
+      \end{block}
+      
+      \vspace{0.3em}
+      Современное понимание: большинство локальных минимумов в DL \textbf{близки} к глобальному (Loss landscape).
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \centering
+      \begin{tikzpicture}[scale=0.75]
+        \draw[->] (-2.2,0) -- (2.2,0) node[right] {$w_1$};
+        \draw[->] (0,-2.2) -- (0,2.2) node[above] {$w_2$};
+        \foreach \r in {0.3,0.6,0.9,1.2,1.5,1.8} {
+          \pgfmathsetmacro{\rr}{\r*\r}
+          \pgfmathsetmacro{\rrr}{2*\r*\r}
+          \draw[gray!40] (0,0) ellipse (\r pt and \rr pt);
+          \draw[gray!40] (0,0) ellipse (\rrr pt and \r pt);
+        }
+        \fill[red] (0,0) circle (3pt);
+        \draw[->,red,thick] (0,0) -- (1.5,0) node[right,font=\tiny] {минимум};
+        \draw[->,red,thick] (0,0) -- (0,1.5) node[above,font=\tiny] {максимум};
+        \node[below left,font=\tiny] at (0,0) {седло};
+      \end{tikzpicture}
+      
+      \vspace{0.3em}
+      $f(w_1,w_2) = w_1^2 - w_2^2$ — седловая точка в $(0,0)$
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === SLIDE 7b: Problem 4 - Computational ===
+\begin{frame}{Проблема 4: Вычислительная сложность и ковариационный сдвиг}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{Вычислительные затраты:}
+      \begin{itemize}
+        \item Один проход по данным может стоить дни/недели
+        \item Подбор гиперпараметров — экспоненциальный поиск
+        \item Память: модель + градиенты + оптимизатор
+        \item GPU — почти необходимость
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \textbf{Internal Covariate Shift:}
+      
+      Распределение входов каждого слоя постоянно меняется, потому что меняются веса предыдущих слоёв.
+      
+      \vspace{0.3em}
+      \textbf{Последствия:}
+      \begin{itemize}
+        \item Приходится снижать learning rate
+        \item Осторожная инициализация
+        \item Зависимость от порядка данных
+      \end{itemize}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === SLIDE 8: Solution 1 - Better Optimizers ===
+\section{Методы решения}
+
+\begin{frame}{Решение 1: Продвинутые оптимизаторы}
+  \begin{columns}[T]
+    \begin{column}{0.52\textwidth}
+      \textbf{SGD с Momentum:}
+      \[
+      \begin{aligned}
+        v_t &= \gamma v_{t-1} + \eta \nabla \mathcal{L}(\theta_t) \\
+        \theta_{t+1} &= \theta_t - v_t
+      \end{aligned}
+      \]
+      «Шар, катящийся с горы» — накапливает инерцию.
+      
+      \vspace{0.3em}
+      \textbf{Adam (Kingma \& Ba, 2015):}
+      \[
+      \begin{aligned}
+        m_t &= \beta_1 m_{t-1} + (1-\beta_1) g_t \\
+        v_t &= \beta_2 v_{t-1} + (1-\beta_2) g_t^2 \\
+        \hat{\theta}_{t+1} &= \theta_t - \eta \frac{m_t}{\sqrt{v_t} + \varepsilon}
+      \end{aligned}
+      \]
+      Momentum + адаптивный learning rate для каждого параметра.
+    \end{column}
+    \begin{column}{0.48\textwidth}
+      \centering
+      \begin{tikzpicture}[scale=0.7]
+        % Contour lines for optimization landscape
+        \draw[gray!30, thick] (0,0) ellipse (2 and 1);
+        \draw[gray!20, thick] (0,0) ellipse (1.5 and 0.75);
+        \draw[gray!10, thick] (0,0) ellipse (1 and 0.5);
+        
+        % SGD path (oscillating)
+        \draw[red, thick, ->] plot[smooth] coordinates {
+          (-1.8, 0.3) (-1.5, 0.5) (-1.3, 0.2) (-1.0, 0.4) (-0.8, 0.1) (-0.5, 0.3) (-0.3, 0.0) (0.0, 0.15) (0.2, 0.0)
+        };
+        \node[red, font=\tiny, above left] at (-1.8,0.3) {SGD};
+        
+        % Momentum path (smooth)
+        \draw[blue, thick, ->] plot[smooth] coordinates {
+          (-1.9, -0.1) (-1.5, -0.05) (-1.1, 0.0) (-0.7, 0.02) (-0.3, 0.01) (0.1, 0.0)
+        };
+        \node[blue, font=\tiny, below] at (-1.9,-0.1) {Momentum};
+        
+        % Minimum
+        \fill (0,0) circle (2pt);
+      \end{tikzpicture}
+      
+      \vspace{0.3em}
+      \begin{tabular}{lcc}
+        \textbf{Оптимизатор} & \textbf{Скорость} & \textbf{Качество} \\
+        SGD & медленно & хорошо \\
+        Momentum & средне & хорошо \\
+        Adam & быстро & отлично \\
+        AdamW & быстро & отлично + L2
+      \end{tabular}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === SLIDE 9: Solution 2 - Activation Functions ===
+\begin{frame}{Решение 2: Функции активации}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{ReLU (Rectified Linear Unit):}
+      \[
+      f(x) = \max(0, x)
+      \]
+      \begin{itemize}
+        \item Нет насыщения для $x > 0$ $\to$ не убивает градиент
+        \item Вычислительно дёшево
+        \item \textbf{Проблема:} «умирающий ReLU» (нейроны залипают на 0)
+      \end{itemize}
+      
+      \textbf{Варианты:}
+      \begin{itemize}
+        \item \textbf{Leaky ReLU:} $f(x) = \max(\alpha x, x)$, $\alpha \approx 0.01$
+        \item \textbf{ELU:} плавное затухание для $x < 0$
+        \item \textbf{Swish/SiLU:} $f(x) = x \cdot \sigma(x)$
+        \item \textbf{GELU:} $f(x) = x \cdot \Phi(x)$ (BERT, GPT)
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \centering
+      \begin{tikzpicture}[scale=0.65]
+        \draw[->] (-2.5,0) -- (2.5,0) node[right] {$x$};
+        \draw[->] (0,-1) -- (0,2.5) node[above] {$f(x)$};
+        
+        % ReLU
+        \draw[blue, thick, domain=-2.5:0] plot (\x, 0);
+        \draw[blue, thick, domain=0:2.5] plot (\x, \x);
+        \node[blue, above right] at (1,1) {ReLU};
+        
+        % Leaky ReLU
+        \draw[red, dashed, thick, domain=-2.5:0] plot (\x, {0.01*\x});
+        \node[red, below] at (-1.3, -0.1) {Leaky};
+        
+        % Sigmoid (comparison)
+        \draw[green!50!black, dotted, thick, domain=-2.5:2.5, samples=50] 
+          plot (\x, {1/(1+exp(-\x))});
+        \node[green!50!black, font=\tiny] at (1.8, 1.0) {sigmoid};
+        
+        % Explaining the problem
+        \draw[red, <->, thick] (-2.5, -0.5) -- node[below, font=\tiny] {Dying ReLU} (0, -0.5);
+      \end{tikzpicture}
+      
+      \vspace{0.3em}
+      \begin{center}
+        \begin{tabular}{lcc}
+          & \textbf{Градиент} & \textbf{Симметрия} \\
+          Sigmoid & $\to 0$ при $|x|>2$ & да \\
+          Tanh & $\to 0$ при $|x|>3$ & да \\
+          ReLU & 0 или 1 & нет \\
+          Swish & плавный & нет
+        \end{tabular}
+      \end{center}
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === SLIDE 10: Solution 3 - Weight Initialization ===
+\begin{frame}{Решение 3: Инициализация весов}
+  \begin{block}{Проблема}
+    Если веса слишком большие — градиенты взрываются.
+    Если слишком маленькие — градиенты исчезают.
+    Нужна «золотая середина»: дисперсия сигнала сохраняется между слоями.
+  \end{block}
+  
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{Xavier/Glorot (2010):}
+      \[
+      W \sim \mathcal{U}\left(-\sqrt{\frac{6}{n_{\text{in}} + n_{\text{out}}}}, \sqrt{\frac{6}{n_{\text{in}} + n_{\text{out}}}}\right)
+      \]
+      Подходит для sigmoid, tanh.
+      
+      \textbf{He/Kaiming (2015):}
+      \[
+      W \sim \mathcal{N}\left(0, \sqrt{\frac{2}{n_{\text{in}}}}\right)
+      \]
+      Оптимальна для ReLU и его вариантов.
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \textbf{Интуиция:}
+      
+      Рассмотрим слой: $y = \sum_{i=1}^{n} w_i x_i$
+      
+      Если $\operatorname{Var}(w) = \sigma^2$ и $\operatorname{Var}(x) = 1$:
+      \[
+      \operatorname{Var}(y) = n \sigma^2
+      \]
+      
+      Чтобы $\operatorname{Var}(y) = \operatorname{Var}(x)$:
+      \[
+      \sigma^2 = \frac{1}{n}
+      \]
+      
+      Аналогично для обратного прохода $\to \frac{2}{n_{\text{in}}}$ для ReLU.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === SLIDE 11: Solution 4 - Batch Normalization ===
+\begin{frame}{Решение 4: Batch Normalization (Ioffe \& Szegedy, 2015)}
+  \begin{columns}[T]
+    \begin{column}{0.55\textwidth}
+      \textbf{Идея:} нормализуем активации каждого слоя к нулевому среднему и единичной дисперсии.
+      
+      \[
+      \hat{x}^{(k)} = \frac{x^{(k)} - \mu_{\text{batch}}^{(k)}}{\sqrt{\sigma_{\text{batch}}^{2(k)} + \varepsilon}}
+      \]
+      
+      \[
+      y^{(k)} = \gamma^{(k)} \hat{x}^{(k)} + \beta^{(k)}
+      \]
+      
+      \vspace{0.3em}
+      \textbf{Эффекты:}
+      \begin{itemize}
+        \item Позволяет использовать \textbf{высокий learning rate}
+        \item Снижает зависимость от инициализации
+        \item Действует как \textbf{регуляризатор} (шум от мини-батча)
+        \item Ускоряет сходимость в 10+ раз
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.45\textwidth}
+      \textbf{На инференсе:} используются скользящие средние $\mu$ и $\sigma$, накопленные во время обучения.
+      
+      \vspace{0.5em}
+      \textbf{Альтернативы:}
+      \begin{itemize}
+        \item \textbf{LayerNorm} — по признакам (Transformer)
+        \item \textbf{InstanceNorm} — для стилей
+        \item \textbf{GroupNorm} — для маленьких батчей
+      \end{itemize}
+      
+      \vspace{0.5em}
+      \textcolor{blue!70}{\textbf{Key insight:}} нормализация делает loss landscape более гладким $\to$ градиенты более предсказуемы.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === SLIDE 12: Solution 5 - Regularization ===
+\begin{frame}{Решение 5: Регуляризация}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{L1/L2 Регуляризация (Weight Decay):}
+      \[
+      \tilde{\mathcal{L}} = \mathcal{L} + \lambda \|\theta\|_2^2
+      \]
+      Штраф за большие веса. L2 = Gaussian prior, L1 = Laplace prior.
+      
+      \vspace{0.5em}
+      \textbf{Dropout (Srivastava et al., 2014):}
+      \[
+      h_{\text{dropped}} = h \odot m, \quad m_i \sim \text{Bernoulli}(p)
+      \]
+      На каждом проходе случайно «выключаем» долю $p$ нейронов.
+      
+      \vspace{0.3em}
+      Ensemble-эффект: модель учится работать без каждой отдельной фичи.
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \textbf{Data Augmentation:}
+      \begin{itemize}
+        \item Искусственное расширение датасета
+        \item Для изображений: повороты, сдвиги, цвета
+        \item Для текста: back-translation, word dropout
+        \item Один из самых эффективных приёмов
+      \end{itemize}
+      
+      \vspace{0.5em}
+      \textbf{Early Stopping:}
+      \begin{itemize}
+        \item Следим за validation loss
+        \item Останавливаемся, когда val loss перестаёт уменьшаться
+        \item Сохраняем лучшую модель
+      \end{itemize}
+      
+      \vspace{0.5em}
+      \textbf{Label Smoothing:}
+      \[
+      y_{\text{smooth}} = (1-\varepsilon) y_{\text{one-hot}} + \varepsilon / K
+      \]
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === SLIDE 13: Solution 6 - LR Scheduling ===
+\begin{frame}{Решение 6: Планирование learning rate}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      Learning rate — самый важный гиперпараметр. Его нужно уменьшать по ходу обучения.
+      
+      \vspace{0.3em}
+      \textbf{Стратегии:}
+      \begin{itemize}
+        \item \textbf{Step decay:} уменьшаем в 10x каждые $N$ эпох
+        \item \textbf{Cosine annealing:} плавное уменьшение по косинусу
+        \item \textbf{Cosine warmup:} линейный рост $\to$ косинус
+        \item \textbf{Reduce on plateau:} уменьшаем, когда val loss застыл
+        \item \textbf{One-cycle:} возрастание $\to$ убывание
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \centering
+      \begin{tikzpicture}[scale=0.7]
+        \draw[->] (0,0) -- (6,0) node[right] {Step};
+        \draw[->] (0,0) -- (0,3) node[above] {lr};
+        
+        % Cosine
+        \draw[blue, thick, domain=0:5.5, samples=50] 
+          plot (\x, {1 + cos(\x*180/3)}) node[right] {cosine};
+        
+        % Step
+        \draw[red, thick] (0,2.5) -- (1.8,2.5) -- (1.8,0.25) -- (3.6,0.25) -- (3.6,0.025);
+        \node[red, above] at (1.8, 2.5) {step};
+        
+        % One-cycle
+        \draw[green!50!black, dashed, thick, domain=0:5.5, samples=100]
+          plot (\x, {2*sin(\x*180/11)}) node[right] {1-cycle};
+      \end{tikzpicture}
+      
+      \vspace{0.3em}
+      \textbf{Warmup} (первые шаги):
+      
+      Если начать с большого lr сразу — градиенты «улетят».
+      Начинаем с 0 и линейно растём до базового lr.
+    \end{column}
+  \end{columns}
+\end{frame}
+
+% === SLIDE 14: Summary ===
+\begin{frame}{Сводка: проблемы и решения}
+  \centering
+  \begin{tabular}{lcl}
+    \toprule
+    \textbf{Проблема} & & \textbf{Решение} \\
+    \midrule
+    Исчезающий градиент & $\longrightarrow$ & ReLU, He init, BatchNorm, ResNet \\
+    Взрывающийся градиент & $\longrightarrow$ & Gradient clipping, BatchNorm \\
+    Переобучение & $\longrightarrow$ & Dropout, Weight Decay, Augmentation \\
+    Медленная сходимость & $\longrightarrow$ & Adam, Momentum, LR schedule \\
+    Внутренний ковар. сдвиг & $\longrightarrow$ & Batch/Layer Normalization \\
+    Плохая инициализация & $\longrightarrow$ & He/Xavier init \\
+    Седловые точки & $\longrightarrow$ & Momentum, Adam (инерция) \\
+    \bottomrule
+  \end{tabular}
+  
+  \vspace{1em}
+  \begin{block}{Главный урок}
+    Глубокие сети работают не благодаря одному приёму, а благодаря \textbf{комбинации}: правильная инициализация + нормализация + продвинутый оптимизатор + регуляризация + планирование lr.
+  \end{block}
+\end{frame}
+
+% === SLIDE 15: Conclusion ===
+\begin{frame}{Заключение}
+  \begin{columns}[T]
+    \begin{column}{0.5\textwidth}
+      \textbf{Что мы узнали:}
+      \begin{itemize}
+        \item Deep Learning = иерархическое представление
+        \item Градиентный спуск — двигатель обучения
+        \item Тренировать глубокие сети сложно
+        \item Но есть проверенные приёмы
+      \end{itemize}
+    \end{column}
+    \begin{column}{0.5\textwidth}
+      \textbf{Дальше:}
+      \begin{itemize}
+        \item CNN и Computer Vision (lec03)
+        \item RNN и последовательности (lec04)
+        \item Attention и Transformer (lec06)
+        \item Не забудем про практику!
+      \end{itemize}
+    \end{column}
+  \end{columns}
+  
+  \vspace{1em}
+  \begin{center}
+    \textcolor{blue!70!black}{\textbf{«Богатство информации порождает бедность внимания»}} \\
+    \tiny{— но Self-Attention эту проблему решает}
+  \end{center}
+\end{frame}
+
+\end{document}

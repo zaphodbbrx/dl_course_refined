@@ -1,0 +1,119 @@
+\documentclass[a4paper,12pt]{article}
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{amsmath,amssymb}
+\usepackage{hyperref}
+\usepackage{geometry}
+\geometry{top=2cm, bottom=2cm, left=2.5cm, right=2.5cm}
+
+\title{Конспект лекции 3: \\ Основные задачи Computer Vision}
+\author{Липкин С.М.}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Введение в Computer Vision}
+
+Компьютерное зрение (CV) решает задачу преобразования визуальных данных в высокоуровневое понимание сцены. Нейронные сети стали основным инструментом в CV благодаря автоматическому извлечению признаков, иерархическому представлению (края $\to$ текстуры $\to$ объекты) и обучению по размеченным данным.
+
+\subsection{Основные типы задач}
+
+\begin{enumerate}
+    \item \textbf{Классификация} — сеть выдаёт вероятности классов через softmax.
+    \item \textbf{Детекция объектов} — локализация (bounding box) + классификация.
+    \item \textbf{Сегментация}:
+    \begin{itemize}
+        \item Семантическая — все объекты одного класса одним цветом.
+        \item Instance segmentation — каждый объект уникальным цветом.
+    \end{itemize}
+    \item \textbf{Распознавание лиц} — embeddings с последующим сравнением расстояний.
+    \item \textbf{Детекция краев} — градиентные фильтры или CNN.
+    \item \textbf{Восстановление изображений} — encoder-decoder архитектуры.
+    \item \textbf{Сопоставление признаков} — keypoint extraction + matching.
+    \item \textbf{Реконструкция сцены} — Structure from Motion, depth estimation.
+    \item \textbf{Анализ движения} — object tracking, optical flow.
+\end{enumerate}
+
+\section{Свёрточные нейронные сети (CNN)}
+
+\subsection{Иерархия признаков}
+\begin{itemize}
+    \item Layer 1: края, углы, цвета.
+    \item Layer 2--3: текстуры, формы.
+    \item Layer 4--5: части объектов.
+    \item FC: целые объекты.
+\end{itemize}
+
+\subsection{Компоненты CNN}
+\begin{enumerate}
+    \item Свёрточный слой — фильтры $\to$ feature maps.
+    \item ReLU: $f(x) = \max(0, x)$.
+    \item Pooling — уменьшение размерности.
+    \item FC слои — классификация.
+\end{enumerate}
+
+\subsection{Ключевые архитектуры}
+\begin{itemize}
+    \item \textbf{ResNet} — skip connections для глубоких сетей.
+    \item \textbf{Inception} — параллельные свёртки разных масштабов.
+    \item \textbf{EfficientNet} — композитное масштабирование (глубина, ширина, разрешение).
+\end{itemize}
+
+\section{Transfer Learning}
+
+Предобученная сеть (backbone на ImageNet: ResNet, VGG) адаптируется под новую задачу. Стратегии обучения:
+\begin{itemize}
+    \item \textbf{Freeze} — фиксация ранних слоёв.
+    \item \textbf{Fine-tune} — дообучение поздних слоёв.
+\end{itemize}
+Замена «головы» сети: классификация — новые FC слои, детекция — RPN + classifier, сегментация — decoder.
+
+\section{Архитектуры детекции}
+
+\subsection{Двухстадийные (Faster R-CNN)}
+\begin{enumerate}
+    \item RPN генерирует anchor boxes.
+    \item ROI Pooling извлекает признаки.
+    \item Классификатор: класс + координаты.
+\end{enumerate}
+Точнее, но медленнее.
+
+\subsection{Одностадийные (YOLO, SSD)}
+\begin{itemize}
+    \item \textbf{YOLO}: grid-based подход, один forward pass, NMS для удаления дубликатов. Эволюция: YOLOv1 (2016) $\to$ YOLOv8 (2023), anchor-free, NAS.
+    \item \textbf{SSD}: multi-scale detection, default boxes разных aspect ratios, VGG16 backbone.
+\end{itemize}
+Быстрее, хуже на мелких объектах.
+
+\subsection{FPN (Feature Pyramid Network)}
+Объединение высокого разрешения с высокоуровневой семантикой. Bottom-up (C2--C5) + top-down с lateral connections (P2--P5). Используется в Faster R-CNN + FPN, Mask R-CNN.
+
+\section{Архитектуры сегментации}
+
+\subsection{DeepLab}
+Atrous (dilated) convolution увеличивает receptive field без роста параметров. ASPP (Atrous Spatial Pyramid Pooling) — параллельные свёртки с rates 1, 6, 12, 18. Encoder-decoder структура.
+
+\subsection{Генеративные модели}
+\begin{itemize}
+    \item \textbf{GAN}: Generator vs Discriminator (StyleGAN, pix2pix).
+    \item \textbf{Diffusion}: пошаговое удаление шума (DALL-E, Stable Diffusion).
+    \item \textbf{VAE}: сжатие в latent space.
+\end{itemize}
+
+\section{Применение и тренды}
+
+Применения: медицина, автономное вождение, промышленность, сельское хозяйство, безопасность.
+
+Современные тренды:
+\begin{itemize}
+    \item Transfer Learning и предобученные модели.
+    \item Vision Transformers (patches + attention).
+    \item Мультимодальность (CLIP, DALL-E).
+    \item Self-supervised learning.
+    \item Explainable AI (Grad-CAM).
+    \item Генеративные модели (GAN, Diffusion).
+\end{itemize}
+
+\end{document}

@@ -1,0 +1,431 @@
+\documentclass[a4paper,12pt]{article}
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{geometry}
+\geometry{top=2cm, bottom=2cm, left=2.5cm, right=2.5cm}
+
+\title{Конспект лекции 1: \\ Введение в Deep Learning}
+\author{Липкин С.М.}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Что такое Deep Learning?}
+
+\subsection{Определение и место в ML}
+
+Глубокое обучение (Deep Learning, DL) — подраздел машинного обучения, использующий многослойные нейронные сети для иерархического извлечения признаков из данных. В отличие от классического ML, где признаки конструируются вручную (feature engineering), DL учится представлять данные на разных уровнях абстракции автоматически.
+
+Три ключевые идеи, на которых стоит DL:
+\begin{enumerate}
+    \item \textbf{Сквозное обучение (end-to-end):} сырые данные подаются на вход, ответ получается на выходе — без ручного выделения признаков.
+    \item \textbf{Иерархия признаков:} первые слои учат простые паттерны (края, цвета), следующие — более сложные (текстуры, формы), последние — абстрактные концепции (объекты, сцены).
+    \item \textbf{Масштабирование:} в отличие от классических алгоритмов, качество глубоких сетей продолжает расти с увеличением объёма данных и числа параметров (при достаточной регуляризации).
+\end{enumerate}
+
+\subsection{Архитектура нейронной сети}
+
+Нейронная сеть — это композиция параметрических функций $f_\theta$, организованных в слои. Каждый слой выполняет линейное преобразование с последующей нелинейной активацией:
+\[
+h^{(l)} = \sigma(W^{(l)} h^{(l-1)} + b^{(l)})
+\]
+где $h^{(l)}$ — активации $l$-го слоя, $W^{(l)}$, $b^{(l)}$ — веса и смещения, $\sigma$ — нелинейная функция активации.
+
+Полная сеть: $y = f_\theta(x) = f^{(L)} \circ f^{(L-1)} \circ \dots \circ f^{(1)}(x)$.
+
+\subsection{Универсальная аппроксимация}
+
+Теорема о универсальной аппроксимации (Cybenko, 1989; Hornik, 1991): нейронная сеть с одним скрытым слоем и нелинейной активацией может аппроксимировать любую непрерывную функцию на компакте с любой точностью \textbf{при достаточном числе нейронов}. Однако на практике глубокие сети (с большим числом слоёв) работают эффективнее широких — они требуют меньше параметров для той же выразительной способности.
+
+\section{Анатомия обучения}
+
+Обучение глубокой сети — это минимизация эмпирического риска:
+\[
+\theta^* = \arg\min_\theta \frac{1}{N} \sum_{i=1}^{N} \mathcal{L}(f_\theta(x^{(i)}), y^{(i)})
+\]
+
+\subsection{Функции потерь}
+
+\begin{itemize}
+    \item \textbf{Cross-Entropy (классификация):}
+    \[
+    \mathcal{L}_{\text{CE}} = -\sum_{c=1}^{C} y_c \log \hat{y}_c
+    \]
+    Совместно с softmax-слоем даёт хорошо калиброванные вероятности.
+    
+    \item \textbf{Mean Squared Error (регрессия):}
+    \[
+    \mathcal{L}_{\text{MSE}} = \frac{1}{n} \sum_{i=1}^{n} (y_i - \hat{y}_i)^2
+    \]
+    
+    \item \textbf{Hinge Loss (SVM-like классификация):}
+    \[
+    \mathcal{L}_{\text{hinge}} = \max(0, 1 - y \cdot \hat{y})
+    \]
+\end{itemize}
+
+\subsection{Градиентный спуск}
+
+Основной метод оптимизации — градиентный спуск. Существует три варианта:
+
+\begin{enumerate}
+    \item \textbf{Batch GD:} полный проход по всем данным перед обновлением. Точно, но медленно, не подходит для больших датасетов.
+    \item \textbf{SGD (Stochastic GD):} обновление по одному случайному примеру. Максимально шумно, но быстро.
+    \[
+    \theta_{t+1} = \theta_t - \eta \nabla_\theta \mathcal{L}(\theta_t; x^{(i)}, y^{(i)})
+    \]
+    \item \textbf{Mini-batch SGD:} компромисс — усредняем градиент по небольшому батчу (32--512 примеров). Стандарт на практике.
+    \[
+    \theta_{t+1} = \theta_t - \eta \cdot \frac{1}{|B|} \sum_{i \in B} \nabla_\theta \mathcal{L}(\theta_t; x^{(i)}, y^{(i)})
+    \]
+\end{enumerate}
+
+\subsection{Обратное распространение (Backpropagation)}
+
+Градиент $\nabla_\theta \mathcal{L}$ вычисляется через цепное правило — последовательное дифференцирование от выхода сети к входу. Для $L$-слойной сети:
+\[
+\frac{\partial \mathcal{L}}{\partial W^{(l)}} = \underbrace{\frac{\partial \mathcal{L}}{\partial h^{(L)}} \cdot \frac{\partial h^{(L)}}{\partial h^{(L-1)}} \cdots \frac{\partial h^{(l+1)}}{\partial h^{(l)}}}_{\text{backward pass}} \cdot \frac{\partial h^{(l)}}{\partial W^{(l)}}
+\]
+
+Ключевая особенность: градиент — это \textbf{произведение} матриц Якоби промежуточных слоёв, что напрямую приводит к проблеме исчезающих/взрывающихся градиентов.
+
+\section{Проблемы глубоких сетей}
+
+\subsection{Проблема 1: Исчезающие и взрывающиеся градиенты}
+
+\textbf{Математическая причина:} градиент на $l$-м слое содержит произведение $L-l$ матриц:
+\[
+\frac{\partial \mathcal{L}}{\partial h^{(l)}} = \frac{\partial \mathcal{L}}{\partial h^{(L)}} \prod_{k=l+1}^{L} \text{diag}(\sigma'(z^{(k)})) (W^{(k)})^T
+\]
+
+Если $\|\text{diag}(\sigma'(z)) W^T\| < 1$ ~--- произведение экспоненциально затухает (исчезающий градиент, ранние слои не обучаются). Если $> 1$ ~--- экспоненциально растёт (взрывающийся градиент, NaN, нестабильность).
+
+\textbf{Классический пример:} sigmoid-активация имеет максимальную производную $\sigma'(x) \le 0.25$. В 10-слойной сети градиент затухает как $0.25^{10} \approx 10^{-6}$.
+
+\textbf{Последствия:}
+\begin{itemize}
+    \item Ранние слои почти не меняются $\to$ сеть не учится иерархии признаков.
+    \item Глубокие сети (10+ слоёв) невозможно обучить стандартным SGD и sigmoid.
+\end{itemize}
+
+\subsection{Проблема 2: Переобучение (Overfitting)}
+
+Когда число параметров сети значительно больше числа примеров в датасете, сеть может «выучить» шум в данных вместо истинных закономерностей.
+
+\textbf{Симптомы:}
+\begin{itemize}
+    \item Loss на обучающей выборке стремится к нулю.
+    \item Loss на валидационной выборке перестаёт падать и начинает расти.
+    \item Большой разрыв между train и validation метриками.
+\end{itemize}
+
+\textbf{Факторы риска:}
+\begin{itemize}
+    \item Мало данных относительно числа параметров.
+    \item Шум в разметке (label noise).
+    \item Избыточная ёмкость модели (capacity).
+\end{itemize}
+
+\subsection{Проблема 3: Седловые точки и локальные минимумы}
+
+В многомерных пространствах ($10^6$--$10^{12}$ параметров) седловые точки встречаются \textbf{гораздо чаще}, чем локальные минимумы. Доля локальных минимумов среди стационарных точек экспоненциально мала (Dauphin et al., 2014).
+
+В седловой точке $\nabla f(\theta) = 0$, но матрица Гессе имеет и положительные, и отрицательные собственные значения. SGD «застревает» в седловой точке, потому что градиент в ней нулевой.
+
+Современное понимание (Choromanska et al., 2015): в достаточно больших сетях \textbf{большинство локальных минимумов имеют значение функции потерь, близкое к глобальному минимуму}. Проблема не в локальных минимумах, а в седловых точках.
+
+\subsection{Проблема 4: Внутренний ковариационный сдвиг (Internal Covariate Shift)}
+
+Определение: распределение входов каждого слоя постоянно меняется в процессе обучения, потому что меняются веса предыдущих слоёв.
+
+\textbf{Последствия:}
+\begin{itemize}
+    \item Приходится использовать низкий learning rate, чтобы компенсировать нестабильность.
+    \item Необходима осторожная инициализация весов.
+    \item Зависимость от порядка и масштаба данных.
+\end{itemize}
+
+\subsection{Проблема 5: Вычислительная сложность и подбор гиперпараметров}
+
+\begin{itemize}
+    \item Обучение одной модели может занимать дни и недели на кластере GPU.
+    \item Число гиперпараметров велико: learning rate, архитектура, размер батча, моментум, weight decay, dropout rate, расписание lr и т.д.
+    \item Поиск по сетке (grid search) экспоненциален. На практике: random search, Bayesian optimization, или наследование известных рецептов.
+\end{itemize}
+
+\section{Методы решения}
+
+\subsection{Решение 1: Продвинутые оптимизаторы}
+
+\subsubsection{SGD с Momentum}
+
+Идея: накапливаем инерцию градиента, как шар, катящийся с горы.
+\[
+\begin{aligned}
+v_t &= \gamma v_{t-1} + \eta \nabla \mathcal{L}(\theta_t) \\
+\theta_{t+1} &= \theta_t - v_t
+\end{aligned}
+\]
+где $\gamma \in [0, 1)$ — коэффициент затухания (обычно 0.9).
+
+\textbf{Эффект:} Momentum сглаживает траекторию, подавляет осцилляции в узких оврагах loss landscape и ускоряет сходимость. Позволяет «проскакивать» мелкие локальные минимумы и седловые точки.
+
+\subsubsection{Adam (Adaptive Moment Estimation)}
+
+Kingma \& Ba, 2015. Комбинация Momentum (первый момент) с адаптивным learning rate (второй момент):
+\[
+\begin{aligned}
+m_t &= \beta_1 m_{t-1} + (1-\beta_1) g_t \\
+v_t &= \beta_2 v_{t-1} + (1-\beta_2) g_t^2 \\
+\hat{m}_t &= \frac{m_t}{1 - \beta_1^t}, \quad \hat{v}_t = \frac{v_t}{1 - \beta_2^t} \\
+\theta_{t+1} &= \theta_t - \eta \frac{\hat{m}_t}{\sqrt{\hat{v}_t} + \varepsilon}
+\end{aligned}
+\]
+
+Параметры: $\beta_1 = 0.9$, $\beta_2 = 0.999$, $\varepsilon = 10^{-8}$.
+
+\textbf{Преимущества:}
+\begin{itemize}
+    \item Каждый параметр имеет свой адаптивный learning rate.
+    \item Работает «из коробки» на широком классе задач.
+    \item Устойчив к шумным градиентам.
+\end{itemize}
+
+\subsubsection{Сравнение оптимизаторов}
+
+\begin{itemize}
+    \item \textbf{SGD:} простота, хорошее обобщение, но медленная сходимость.
+    \item \textbf{SGD + Momentum:} быстрее SGD, хорошо обобщает.
+    \item \textbf{Adam:} быстро сходится, работает «из коробки», но иногда хуже обобщает.
+    \item \textbf{AdamW (Loshchilov \& Hutter, 2019):} Adam с корректным weight decay (не путать с L2-регуляризацией в Adam).
+    \item \textbf{RMSprop:} предшественник Adam, только адаптивный lr.
+\end{itemize}
+
+\subsection{Решение 2: Правильные функции активации}
+
+\subsubsection{Sigmoid и Tanh (классические)}
+\[
+\sigma(x) = \frac{1}{1+e^{-x}}, \quad \tanh(x) = \frac{e^x - e^{-x}}{e^x + e^{-x}}
+\]
+
+\textbf{Недостаток:} насыщение при $|x| > 2$ (sigmoid) / $|x| > 3$ (tanh) $\to$ производная $\to 0$ $\to$ исчезающий градиент.
+
+\subsubsection{ReLU (Rectified Linear Unit)}
+\[
+f(x) = \max(0, x)
+\]
+
+\textbf{Преимущества:}
+\begin{itemize}
+    \item Производная 1 для $x > 0$ — нет насыщения, градиент проходит.
+    \item Вычислительно дёшево: один сравнение.
+    \item Спасичная (sparse) активация — многие нейроны дают 0.
+\end{itemize}
+
+\textbf{Недостаток:} «умирающий ReLU» (dying ReLU) — если нейрон перешёл в область $x < 0$, его градиент равен 0, и он больше никогда не восстановится.
+
+\subsubsection{Улучшенные варианты ReLU}
+\begin{itemize}
+    \item \textbf{Leaky ReLU:} $f(x) = \max(\alpha x, x)$ с $\alpha \approx 0.01$. Небольшой градиент для $x < 0$.
+    \item \textbf{PReLU (Parametric ReLU):} $\alpha$ — обучаемый параметр.
+    \item \textbf{ELU:} $f(x) = \max(x, \alpha(e^x - 1))$ — плавное затухание для $x < 0$.
+    \item \textbf{Swish/SiLU (Ramachandran et al., 2017):} $f(x) = x \cdot \sigma(x)$ — найдена автоматическим поиском. Гладкая, немонотонная.
+    \item \textbf{GELU (Hendrycks \& Gimpel, 2016):} $f(x) = x \cdot \Phi(x)$, где $\Phi$ — CDF нормального распределения. Используется в BERT, GPT, ViT.
+\end{itemize}
+
+\subsection{Решение 3: Инициализация весов}
+
+Неправильная инициализация весов — одна из главных причин проблем с градиентами. Правильная инициализация должна сохранять дисперсию сигнала (и градиента) между слоями.
+
+\subsubsection{Xavier/Glorot Init (2010)}
+\[
+W \sim \mathcal{U}\left(-\sqrt{\frac{6}{n_{\text{in}} + n_{\text{out}}}}, \sqrt{\frac{6}{n_{\text{in}} + n_{\text{out}}}}\right)
+\]
+
+\textbf{Условие:} $\operatorname{Var}(y) = \operatorname{Var}(x)$ для линейной части. Вывод:
+\[
+\operatorname{Var}(y) = \sum_{i=1}^{n_{\text{in}}} \operatorname{Var}(w_i x_i) = n_{\text{in}} \operatorname{Var}(w) \operatorname{Var}(x) \implies \operatorname{Var}(w) = \frac{1}{n_{\text{in}}}
+\]
+Аналогично для обратного прохода: $\operatorname{Var}(w) = 1 / n_{\text{out}}$. Компромисс: 
+$\operatorname{Var}(w) = 2 / (n_{\text{in}} + n_{\text{out}})$.
+
+Подходит для sigmoid и tanh, но \textbf{не подходит} для ReLU.
+
+\subsubsection{He/Kaiming Init (2015)}
+\[
+W \sim \mathcal{N}\left(0, \frac{2}{n_{\text{in}}}\right)
+\]
+
+Учитывает, что ReLU «убивает» половину нейронов, поэтому дисперсия должна быть в 2 раза больше, чем у Xavier. Оптимальна для ReLU и его вариантов.
+
+\subsubsection{Практические рекомендации}
+\begin{itemize}
+    \item ReLU + He init: стандартная комбинация для свёрточных и полносвязных сетей.
+    \item Tanh + Xavier: для RNN (но лучше использовать LayerNorm).
+    \item Эпоха больших языковых моделей: для Transformer обычно используется $\mathcal{N}(0, d_{\text{model}}^{-1/2})$.
+\end{itemize}
+
+\subsection{Решение 4: Batch Normalization}
+
+Ioffe \& Szegedy, 2015. Одна из самых влиятельных статей в DL.
+
+\subsubsection{Алгоритм}
+
+На каждом шаге нормализуем активации по мини-батчу:
+\[
+\mu_B = \frac{1}{|B|} \sum_{i=1}^{|B|} x_i, \quad \sigma_B^2 = \frac{1}{|B|} \sum_{i=1}^{|B|} (x_i - \mu_B)^2
+\]
+\[
+\hat{x}_i = \frac{x_i - \mu_B}{\sqrt{\sigma_B^2 + \varepsilon}}, \quad y_i = \gamma \hat{x}_i + \beta
+\]
+
+где $\gamma$ (масштаб) и $\beta$ (сдвиг) — обучаемые параметры, восстанавливающие выразительную способность слоя.
+
+На инференсе: $\mu$ и $\sigma$ заменяются на скользящие средние, накопленные во время обучения.
+
+\subsubsection{Эффекты}
+\begin{itemize}
+    \item Позволяет использовать значительно \textbf{более высокий learning rate} (до 10x).
+    \item Снижает зависимость от инициализации.
+    \item Действует как \textbf{регуляризатор} (добавляет шум от оценки статистик по мини-батчу).
+    \item Ускоряет сходимость в 10+ раз.
+\end{itemize}
+
+\subsubsection{Механизм}
+Современное понимание (Santurkar et al., 2018): BN улучшает не столько распределение активаций, сколько делает loss landscape \textbf{более гладким} — градиенты становятся более предсказуемыми и менее чувствительными к масштабу весов.
+
+\subsubsection{Альтернативы}
+\begin{itemize}
+    \item \textbf{Layer Normalization (LayerNorm):} нормализация по признакам (не по батчу). Стандарт для Transformer, RNN. Не зависит от batch size.
+    \item \textbf{Instance Normalization:} для задач переноса стиля.
+    \item \textbf{Group Normalization:} для задач с маленькими батчами (сегментация, детекция).
+    \item \textbf{RMS Normalization:} упрощение LayerNorm (деление на $\sqrt{\text{RMS}}$). Используется в Llama.
+\end{itemize}
+
+\subsection{Решение 5: Регуляризация}
+
+\subsubsection{L1/L2-регуляризация (Weight Decay)}
+\[
+\tilde{\mathcal{L}} = \mathcal{L} + \frac{\lambda}{2} \|\theta\|_2^2
+\]
+Штраф за большие веса. L2 соответствует Gaussian prior на веса (MAP-оценка). L1 даёт разреженные веса (Laplace prior).
+
+\textbf{Важно:} в Adam L2-регуляризация работает иначе (делится на адаптивный lr). AdamW — корректная реализация weight decay для Adam.
+
+\subsubsection{Dropout}
+Srivastava et al., 2014. На каждом проходе случайно «выключаем» долю $p$ нейронов:
+\[
+h_{\text{dropped}} = h \odot m, \quad m_i \sim \text{Bernoulli}(1-p)
+\]
+
+\textbf{Интуиция:}
+\begin{itemize}
+    \item Ensemble-эффект — каждая подсеть со случайным набором нейронов учится независимо.
+    \item Модель не может полагаться на отдельные нейроны — все нейроны учатся давать полезные признаки.
+    \item При инференсе масштабируем веса на $1-p$ (или используем inverted dropout).
+\end{itemize}
+
+\textbf{На практике:} $p \approx 0.2$ для рекуррентных слоёв, $p \approx 0.5$ для полносвязных. В свёрточных слоях используется Spatial Dropout (выключает целые каналы).
+
+\subsubsection{Data Augmentation}
+Искусственное расширение обучающей выборки путём применения случайных преобразований:
+\begin{itemize}
+    \item \textbf{Изображения:} повороты, сдвиги, отражения, изменение цвета/яркости/контраста, обрезка (RandomCrop), смешивание (Mixup, CutMix).
+    \item \textbf{Текст:} back-translation, word dropout, синонимы.
+    \item \textbf{Аудио:} SpecAugment (маскирование по частоте и времени).
+\end{itemize}
+
+\textbf{Почему работает:} модель учится быть инвариантной к несущественным вариациям данных.
+
+\subsubsection{Early Stopping}
+Следим за метрикой на валидационной выборке. Когда val loss перестаёт уменьшаться (patience эпох), останавливаем обучение и возвращаем модель с лучшим val loss.
+
+\textbf{Преимущества:} не требует модификации модели, бесплатно.
+
+\subsubsection{Label Smoothing}
+\[
+y_{\text{smooth}} = (1-\varepsilon) y_{\text{one-hot}} + \frac{\varepsilon}{K}
+\]
+где $K$ — число классов, $\varepsilon \approx 0.1$.
+
+Предотвращает переуверенность модели (overconfidence). Используется в Inception, Transformer, большинстве современных архитектур.
+
+\subsection{Решение 6: Планирование learning rate}
+
+Learning rate — самый важный гиперпараметр. По ходу обучения lr необходимо уменьшать.
+
+\subsubsection{Основные стратегии}
+\begin{itemize}
+    \item \textbf{Step decay:} уменьшаем lr в 10 раз каждые $N$ эпох (например, каждые 30 эпох).
+    \item \textbf{Exponential decay:} $\eta_t = \eta_0 \cdot \gamma^t$, $\gamma \approx 0.95$.
+    \item \textbf{Cosine annealing (Loshchilov \& Hutter, 2017):}
+    \[
+    \eta_t = \eta_{\min} + \frac{1}{2}(\eta_{\max} - \eta_{\min})\left(1 + \cos\left(\frac{t}{T}\pi\right)\right)
+    \]
+    Плавное уменьшение по косинусу.
+    \item \textbf{Reduce on Plateau:} уменьшаем lr в 2--10 раз, когда val loss перестаёт улучшаться.
+    \item \textbf{One-cycle (Smith, 2018):} lr сначала растёт до максимума, потом плавно уменьшается. Позволяет обучить модель за меньшее число эпох.
+\end{itemize}
+
+\subsubsection{Warmup}
+Если начать обучение с высоким lr, градиенты могут «улететь» (особенно для Transformer и Adam). Решение: на первых $K$ шагах линейно растём lr от 0 до базового значения:
+\[
+\eta_t = \eta_{\text{base}} \cdot \frac{t}{K}, \quad t = 1, \dots, K
+\]
+
+В оригинальном Transformer: $K = 4000$ шагов warmup.
+
+\subsubsection{Практический рецепт}
+Для современных архитектур: Cosine warmup + AdamW. Например: 10\% эпох warmup, 90\% cosine decay.
+
+\section{Сводка: таблица проблем и решений}
+
+\begin{center}
+\begin{tabular}{ll}
+\toprule
+\textbf{Проблема} & \textbf{Основные решения} \\
+\midrule
+Исчезающий градиент & ReLU, He init, BatchNorm, Residual connections \\
+Взрывающийся градиент & Gradient clipping, BatchNorm \\
+Переобучение & Dropout, Weight Decay, Data Augmentation, Early Stopping \\
+Медленная сходимость & Adam, Momentum, LR schedule \\
+Внутренний ковариационный сдвиг & Batch/Layer Normalization \\
+Плохая инициализация & He/Xavier init \\
+Седловые точки & Momentum, Adam (инерция проскакивает) \\
+Переуверенность модели & Label Smoothing \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\section{Заключение}
+
+\subsection{Главный вывод}
+Глубокие сети работают не благодаря одному «волшебному» приёму, а благодаря \textbf{комбинации} хорошо подобранных техник:
+\[
+\text{Успех} \approx \text{правильная инициализация} + \text{нормализация} + \text{продвинутый оптимизатор} + \text{регуляризация} + \text{планирование lr}
+\]
+
+\subsection{Исторический контекст}
+\begin{itemize}
+    \item 1980-е: Backpropagation (Rumelhart, Hinton, Williams).
+    \item 2006: Deep Belief Networks (Hinton) — начало эпохи DL.
+    \item 2012: AlexNet (Krizhevsky, Sutskever, Hinton) — победа на ImageNet.
+    \item 2014: Dropout, Adam.
+    \item 2015: Batch Normalization, ResNet.
+    \item 2017: Transformer (Vaswani et al.).
+    \item 2018--настоящее: BERT, GPT, Scaling Laws, Foundation Models.
+\end{itemize}
+
+\subsection{Дальнейшие лекции курса}
+\begin{itemize}
+    \item Лекция 3: Свёрточные нейронные сети и Computer Vision.
+    \item Лекция 4: Рекуррентные нейронные сети.
+    \item Лекция 6: Transformer и механизмы внимания.
+\end{itemize}
+
+\end{document}

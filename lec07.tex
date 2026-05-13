@@ -1,0 +1,308 @@
+\documentclass[a4paper,12pt]{article}
+\usepackage[T2A]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[russian]{babel}
+\usepackage{amsmath,amssymb,mathtools}
+\usepackage{hyperref}
+\usepackage{enumitem}
+\usepackage{booktabs}
+\usepackage{geometry}
+\geometry{top=2cm, bottom=2cm, left=2.5cm, right=2.5cm}
+
+\title{Конспект лекции 7: \\ Языковые модели (LLM)}
+\author{Липкин С.М.}
+\date{}
+
+\begin{document}
+\maketitle
+
+\section{Постановка задачи языкового моделирования}
+
+Языковое моделирование --- фундаментальная задача NLP. Модель учится предсказывать распределение вероятностей последовательностей токенов.
+
+\subsection{Формальное определение}
+
+Для последовательности токенов $w_1, w_2, \dots, w_n$ совместная вероятность раскладывается через цепное правило:
+
+\[
+P(w_1, w_2, \dots, w_n) = \prod_{t=1}^n P(w_t \mid w_{1}, \dots, w_{t-1}) = \prod_{t=1}^n P(w_t \mid w_{<t}).
+\]
+
+Задача языковой модели --- научиться аппроксимировать $P(w_t \mid w_{<t})$ для любого контекста.
+
+\subsection{История}
+
+\begin{itemize}
+    \item \textbf{N-граммы:} считаем частоты $n$ последовательных токенов. Не работают на длинных контекстах.
+    \item \textbf{RNN/LSTM:} обрабатывают последовательность шаг за шагом, но медленно и с затухающими градиентами.
+    \item \textbf{Transformer (2017):} параллельная обработка всей последовательности через self-attention.
+    \item \textbf{LLM (2018--настоящее время):} Transformer-архитектуры на масштабе миллиардов параметров.
+\end{itemize}
+
+\section{Encoder vs Decoder: два подхода}
+
+Все современные LLM используют архитектуру Transformer, но по-разному: encoder-only для понимания, decoder-only для генерации, encoder-decoder для трансформаций.
+
+\subsection{Encoder-only (BERT)}
+\begin{itemize}
+    \item Каждый токен видит полный контекст (бидирекционально).
+    \item Нет каузальной маски --- attention на все токены.
+    \item Используется: классификация, NER, QA, NLI.
+    \item Примеры: BERT, RoBERTa, ALBERT, DistilBERT.
+\end{itemize}
+
+\subsection{Decoder-only (GPT)}
+\begin{itemize}
+    \item Каждый токен видит только предыдущие (causal mask).
+    \item Авторегрессивная генерация: предсказываем следующий токен.
+    \item Используется: генерация текста, диалог, код.
+    \item Примеры: GPT, LLaMA, Mistral, Qwen.
+\end{itemize}
+
+\subsection{Encoder-Decoder (T5, BART)}
+\begin{itemize}
+    \item Encoder читает вход (бидирекционально).
+    \item Decoder генерирует выход (авторегрессивно, с cross-attention к encoder).
+    \item Используется: перевод, суммаризация, преобразование текста.
+    \item Примеры: T5, BART, PEGASUS.
+\end{itemize}
+
+\section{Encoder-based модели: BERT}
+
+BERT (Bidirectional Encoder Representations from Transformers) предложен Google в 2018 году (Devlin et al.).
+
+\subsection{Архитектура}
+BERT использует многослойный Transformer encoder. Стандартные конфигурации:
+\begin{itemize}
+    \item BERT-Base: 12 слоёв, 768 hidden, 12 heads = 110M параметров.
+    \item BERT-Large: 24 слоя, 1024 hidden, 16 heads = 340M параметров.
+\end{itemize}
+
+\subsection{Предобучение}
+BERT обучается на двух задачах одновременно:
+
+\textbf{1. Masked Language Modeling (MLM):}
+\begin{itemize}
+    \item 15\% токенов выбираются для маскировки.
+    \item Из выбранных: 80\% заменяются на [MASK], 10\% --- на случайный токен, 10\% --- остаются без изменений.
+    \item Модель учится восстанавливать исходные токены.
+    \item Это позволяет учитывать контекст слева и справа (бидирекциональность).
+\end{itemize}
+
+\textbf{2. Next Sentence Prediction (NSP):}
+\begin{itemize}
+    \item На вход подаются два предложения: A и B.
+    \item Модель должна предсказать, является ли B следующим за A.
+    \item [CLS]-токен аккумулирует информацию для классификации.
+    \item Позже выяснилось, что NSP мало эффективен (RoBERTa его удалила).
+\end{itemize}
+
+\subsection{Fine-tuning}
+После предобучения BERT донастраивается под конкретную задачу:
+
+\begin{itemize}
+    \item \textbf{Классификация:} [CLS] $\to$ линейный слой $\to$ softmax.
+    \item \textbf{Token-level (NER, POS):} каждый выходной токен $\to$ линейный слой.
+    \item \textbf{QA (SQuAD):} предсказание start/end позиции ответа.
+\end{itemize}
+
+\subsection{Варианты и развитие}
+\begin{itemize}
+    \item \textbf{RoBERTa:} больше данных, нет NSP, динамическая маскировка.
+    \item \textbf{ALBERT:} разделение параметров (factorized embedding + cross-layer sharing).
+    \item \textbf{DistilBERT:} дистилляция (40\% меньше, 97\% качества).
+    \item \textbf{ELECTRA:} детекция заменённых токенов вместо MLM.
+\end{itemize}
+
+\section{Авторегрессионные модели: GPT}
+
+GPT (Generative Pre-trained Transformer) предложен OpenAI в 2018 году.
+
+\subsection{Архитектура и обучение}
+
+GPT использует decoder-only Transformer с каузальным маскированием. Функция потерь --- стандартная кросс-энтропия для next-token prediction:
+
+\[
+\mathcal{L} = -\frac{1}{T} \sum_{t=1}^T \log P(x_t \mid x_{<t}; \theta).
+\]
+
+Обучение ведётся на огромных корпусах текстов (Common Crawl, WebText, Wikipedia, книги). Токенизация --- BPE (Byte Pair Encoding, Sennrich et al., 2016), которая разбивает слова на подслова, решая проблему OOV.
+
+\subsection{Эволюция GPT}
+
+\begin{itemize}
+    \item \textbf{GPT-1 (2018):} 117M параметров, 12 слоёв. Предобучение + fine-tuning.
+    \item \textbf{GPT-2 (2019):} 1.5B параметров, 48 слоёв. Zero-shot способности на многих задачах.
+    \item \textbf{GPT-3 (2020):} 175B параметров, 96 слоёв. In-context learning (few-shot без fine-tuning).
+    \item \textbf{GPT-4 (2023):} $\approx$1.7T параметров (предположительно MoE). Мультимодальность.
+\end{itemize}
+
+\subsection{Инференс}
+
+Авторегрессивный инференс --- последовательная генерация:
+\begin{enumerate}
+    \item Подаём prompt.
+    \item Получаем распределение $P(x_{t+1} \mid x_{1:t})$.
+    \item Выбираем следующий токен (greedy, top-k, top-p, temperature).
+    \item Добавляем к последовательности, повторяем.
+\end{enumerate}
+
+\textbf{KV Cache:} ключевая оптимизация. На каждом шаге пересчёт $K$ и $V$ для предыдущих токенов --- дорого. KV-кеш сохраняет $K$ и $V$ из предыдущих шагов, на новом шаге считаем только для нового токена. Снижает сложность с $O(n^2)$ до $O(n)$ на шаг.
+
+\textbf{Стратегии декодирования:}
+\begin{itemize}
+    \item \textbf{Greedy:} $x_{t+1} = \arg\max P(\cdot \mid x_{1:t})$. Просто, но может зацикливаться.
+    \item \textbf{Top-k:} ресемплинг из $k$ наиболее вероятных токенов.
+    \item \textbf{Nucleus (top-p):} выбираем минимальное множество токенов с кумулятивной вероятностью $\ge p$.
+    \item \textbf{Temperature:} $P_i \propto \exp(\text{logit}_i / T)$. $T \to 0$ --- argmax, $T \to \infty$ --- равномерное.
+\end{itemize}
+
+\subsection{Emergent abilities и Scaling Laws}
+
+\textbf{Emergent abilities:} способности, которые не проявляются в маленьких моделях, но внезапно появляются при масштабировании. Примеры: in-context learning, chain-of-thought, арифметика, перевод.
+
+\textbf{Scaling Laws (Kaplan et al., 2020):} loss модели следует степенному закону от числа параметров $N$ и объёма данных $D$:
+\[
+\text{Loss}(N, D) \propto N^{-\alpha} \cdot D^{-\beta},
+\]
+где $\alpha \approx 0.076$, $\beta \approx 0.103$. Вывод: увеличивать $N$ выгоднее, чем $D$.
+
+\textbf{Chinchilla (Hoffmann et al., 2022):} DeepMind показала, что предыдущие результаты недооценивали важность данных. Оптимальное соотношение:
+\[
+N_{\text{opt}} \approx 2.1 \times 10^{9} \cdot C^{0.5},
+\]
+где $C$ --- compute budget в FLOPs. Для 175B модели нужно 3.7T токенов (у GPT-3 было 300B --- сильный under-training). Chinchilla (70B на 1.4T токенов) превзошла GPT-3 при меньшем размере.
+
+\section{От GPT-3 к ChatGPT}
+
+\subsection{Проблема raw GPT-3}
+\begin{itemize}
+    \item Умеет продолжать текст, но не следует инструкциям.
+    \item Пример: \texttt{Переведи на русский: Hello} $\to$ \texttt{«Hello» может быть переведено...}
+    \item Нужно: \texttt{Здравствуйте}
+\end{itemize}
+
+\subsection{Instruction Tuning (SFT)}
+Собираем пары (инструкция, идеальный ответ) и дообучаем модель:
+\begin{itemize}
+    \item \textbf{FLAN (Wei et al., 2021):} 60+ NLP-задач, переформулированных как инструкции.
+    \item \textbf{Alpaca (Stanford, 2023):} 52K инструкций от GPT-3.5 через Self-Instruct.
+    \item \textbf{OpenAssistant:} краудсорсинговые датасеты диалогов.
+    \item \textbf{Формат:} system / user / assistant роли в промпте.
+\end{itemize}
+
+\subsection{RLHF (Reinforcement Learning from Human Feedback)}
+Трёхшаговый процесс от InstructGPT (Ouyang et al., 2022):
+
+\textbf{Шаг 1: SFT} --- дообучение на инструкциях (как выше).
+
+\textbf{Шаг 2: Reward Model (RM)} --- обучаем модель ранжировать ответы:
+\begin{itemize}
+    \item Генерируем несколько ответов на промпт.
+    \item Человек ранжирует их (A $>$ B $>$ C).
+    \item RM учится предсказывать предпочтения человека.
+    \item Loss: Bradley-Terry model $P(A > B) = \sigma(r_A - r_B)$.
+\end{itemize}
+
+\textbf{Шаг 3: PPO (Proximal Policy Optimization)} --- оптимизируем LM:
+\begin{itemize}
+    \item Генерируем ответ $\to$ RM даёт награду $\to$ PPO обновляет LM.
+    \item KL penalty: $\beta \cdot D_{KL}(\pi_{\text{PPO}} \parallel \pi_{\text{SFT}})$ --- чтобы не отойти далеко от SFT-модели.
+    \item Итоговая loss: $\mathcal{L} = \mathbb{E}[-r(x, y)] + \beta \cdot D_{KL}(\pi_{\text{PPO}} \parallel \pi_{\text{SFT}})$.
+\end{itemize}
+
+\textbf{Ключевой результат InstructGPT:} 1.3B модель с RLHF превзошла 175B GPT-3 по оценкам людей. Alignment важнее размера.
+
+\subsection{ChatGPT (ноябрь 2022)}
+ChatGPT добавил к RLHF:
+\begin{itemize}
+    \item Диалоговый формат с multi-turn историей.
+    \item Safety fine-tuning: отказ от вредных запросов.
+    \item Контроль стиля и ограничений.
+    \item Продвинутые методы инференса (latency/throughput оптимизации).
+\end{itemize}
+
+\section{Альтернативные подходы к alignment}
+
+\begin{itemize}
+    \item \textbf{DPO (Direct Preference Optimization, 2023):} явно задаём предпочтения без RM и RL. Оптимизируем напрямую: $\mathcal{L} = -\mathbb{E}[\log \sigma(\beta(\log \pi_\theta(y_w|x) - \log \pi_\theta(y_l|x)) - \beta \log(\pi_{\text{ref}}(y_w|x) / \pi_{\text{ref}}(y_l|x)))]$.
+    \item \textbf{GRPO (Group Relative PPO):} DeepSeek. Без Critic-сети. Награда нормируется по группе ответов.
+    \item \textbf{Constitutional AI:} модель сама генерирует и оценивает свои ответы по конституции (набору правил).
+    \item \textbf{RLAIF:} Reward Model заменяется на LLM, дающую AI feedback.
+\end{itemize}
+
+\section{DeepSeek и Reasoning}
+
+\subsection{DeepSeek-R1 (январь 2025)}
+DeepSeek-R1 показала, что рассуждение (reasoning) можно обучить через RL без SFT:
+
+\begin{enumerate}
+    \item \textbf{Cold-start:} небольшой SFT на цепочках рассуждений.
+    \item \textbf{GRPO (Group Relative Policy Optimization):} награда за правильный ответ + формат reasoning.
+    \item \textbf{Self-evolution:} модель естественно учится более длинным и сложным рассуждениям.
+    \item \textbf{Aha-moment:} модель «перепроверяет» свои рассуждения --- поведение, которого не было в обучении.
+\end{enumerate}
+
+\subsection{DeepSeek-V3 (декабрь 2024)}
+\begin{itemize}
+    \item 671B параметров, 37B активных (MoE с 256 экспертами).
+    \item Обучен на 14.8T токенов. FP8 mixed-precision.
+    \item Стоимость обучения: \$5.5M (в 10 раз дешевле аналогов).
+    \item Использует Multi-Token Prediction (MTP) --- предсказание нескольких токенов сразу.
+    \item Multi-head Latent Attention (MLA) --- сжатие KV кеша для эффективного инференса.
+\end{itemize}
+
+\section{Mixture of Experts (MoE)}
+
+\subsection{Идея}
+MoE заменяет плотные FFN-слои на спарсные наборы экспертов. Для каждого токена активируется только подмножество экспертов (обычно top-2):
+
+\[
+\text{MoE}(x) = \sum_{i=1}^E G(x)_i \cdot E_i(x), \quad G(x) = \text{softmax}(W_g x),
+\]
+где $G(x)$ --- gating network, $E_i(x)$ --- i-й эксперт (обычно FFN).
+
+\subsection{Преимущества и недостатки}
+
+\textbf{Преимущества:}
+\begin{itemize}
+    \item Больше параметров, те же FLOPs на токен.
+    \item Качество близко к dense-модели с полным размером.
+    \item Естественная специализация экспертов (разные эксперты для разных тем/задач).
+\end{itemize}
+
+\textbf{Недостатки:}
+\begin{itemize}
+    \item Все эксперты в памяти --- высокий VRAM.
+    \item Load balancing: неравномерное распределение токенов по экспертам.
+    \item Fine-tuning сложнее (overfitting, не все эксперты учатся).
+    \item Коммуникационные overhead при распределённом обучении.
+\end{itemize}
+
+\subsection{Практические реализации}
+
+\begin{itemize}
+    \item \textbf{Mixtral 8x7B (Mistral, 2023):} 8 экспертов, top-2 активация. 47B всего / 12.9B активных.
+    \item \textbf{DeepSeekMoE:} мелкозернистые эксперты (больше маленьких), shared expert для всех токенов, auxiliary loss-free load balancing через динамический bias.
+    \item \textbf{Switch Transformer (Google, 2021):} top-1 активация (один эксперт на токен). Максимальная спарсность.
+    \item \textbf{GShard:} распределённый MoE для машинного перевода.
+\end{itemize}
+
+\subsection{Технические детали DeepSeekMoE}
+\begin{itemize}
+    \item \textbf{Мелкозернистые эксперты:} 256 экспертов вместо 8-16, каждый меньше. Более гибкое распределение знаний.
+    \item \textbf{Shared expert:} один общий FFN для всех токенов + routed эксперты для специализации.
+    \item \textbf{Dynamic bias вместо aux loss:} регуляция загрузки экспертов через bias-терм в gating, без дополнительных потерь.
+\end{itemize}
+
+\section{Выводы}
+\begin{itemize}
+    \item Языковое моделирование --- предсказание следующего токена --- основа всех современных LLM.
+    \item Encoder-only (BERT) для понимания, decoder-only (GPT) для генерации.
+    \item Scaling Laws: модель и данные должны масштабироваться согласованно.
+    \item RLHF выравнивает модель под человеческие предпочтения.
+    \item DeepSeek показала, что reasoning можно получать через RL.
+    \item MoE --- новый стандарт для масштабирования (больше параметров, те же FLOPs).
+\end{itemize}
+
+\end{document}
